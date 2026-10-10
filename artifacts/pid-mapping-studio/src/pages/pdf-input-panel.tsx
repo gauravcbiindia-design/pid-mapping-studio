@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'wouter';
 import {
   AlertTriangle, Download, FilePlus2, FileText, HardDrive, Loader2, Trash2, X, Eye, Monitor, RefreshCw,
 } from 'lucide-react';
@@ -464,9 +465,9 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
                 </button>
               )}
               {(m.analysisStatus === 'needs-review' || m.analysisStatus === 'no-tags') && (
-                <a className="btn pdf-extract-btn" href={`/workspace/${discipline === 'PFD' ? 'pfd' : 'pid'}/engineering-data?source=${encodeURIComponent(m.id)}`}>
+                <Link className="btn pdf-extract-btn" href={`/workspace/${discipline === 'PFD' ? 'pfd' : 'pid'}/engineering-data?source=${encodeURIComponent(m.id)}`}>
                   Open EDE
-                </a>
+                </Link>
               )}
               {m.analysisStatus === 'needs-review' && (
                 <button type="button" className="btn pdf-extract-btn" disabled={busy}
