@@ -8,6 +8,7 @@ import {
   listPdfs, savePdf, sha256Hex, totalStoredBytes, updatePdfMeta, type PdfMeta,
 } from '@/lib/local-pdf-store';
 import { extractPdfEngineeringTags } from '@/lib/pdf-engineering-extraction';
+import { extractionFailureMessage } from '@/lib/pdf-extraction-error';
 import { getEngineeringDrawings, savePdfExtraction } from '@/lib/engineering-data';
 import './pdf-input-panel.css';
 
@@ -205,11 +206,12 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         if (alive()) addNote('info', `${meta.alias}: ${ede.recordCount} tag candidate(s) added to EDE${ede.recordCount ? ' for review' : ' (no tags found)'}. AutoCAD is not connected.`);
       } catch (e) {
         const cancelled = e instanceof StoreError && e.code === 'cancelled';
+        const message = cancelled ? 'Extraction paused. Resume it from this saved PDF.' : extractionFailureMessage(e);
         await updatePdfMeta(meta.id, {
           analysisStatus: cancelled ? 'paused' : 'failed',
-          analysisMessage: cancelled ? 'Extraction paused. Resume it from this saved PDF.' : 'PDF saved, but EDE extraction did not finish. Try again from the PDF row.',
+          analysisMessage: message,
         }).catch(() => undefined);
-        if (!cancelled && alive()) addNote('error', `${meta.alias} was saved, but EDE extraction failed. Your PDF is still available; retry extraction from its row.`);
+        if (!cancelled && alive()) addNote('error', `${meta.alias}: ${message}`);
       }
       task.state = 'done';
       if (mounted.current) await refresh();
@@ -251,7 +253,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
       tasksRef.current = tasksRef.current.filter((t) => !tasks.includes(t));
       if (!mounted.current) return;
       const ok = tasks.filter((t) => t.state === 'done').length;
-      if (ok) addNote('info', `${ok} PDF(s) saved on this device. EDE candidates need your review; AutoCAD is not connected.`);
+      if (ok) addNote('info', `${ok} PDF(s) saved on this device. Check each PDF's EDE status below; AutoCAD is not connected.`);
       setProgress(null);
     });
   };
@@ -268,12 +270,13 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
           : current);
       });
       addNote('info', `${meta.alias}: ${ede.recordCount} tag candidate(s) added to EDE${ede.recordCount ? ' for review' : ' (no tags found)'}. AutoCAD is not connected.`);
-    } catch {
+    } catch (error) {
+      const message = extractionFailureMessage(error);
       await updatePdfMeta(meta.id, {
         analysisStatus: 'failed',
-        analysisMessage: 'EDE extraction did not finish. Check the connection and try again.',
+        analysisMessage: message,
       }).catch(() => undefined);
-      addNote('error', `${meta.alias} remains saved. EDE extraction failed; check the internet connection for OCR assets, then retry.`);
+      addNote('error', `${meta.alias}: ${message}`);
     } finally {
       setProgress(null);
       setProcessingId(null);
@@ -448,13 +451,16 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
                             : 'Not extracted yet'}
                   {' · AutoCAD: not connected'}
                 </span>
+                {m.analysisStatus === 'failed' && m.analysisMessage && (
+                  <span className="pdf-analysis-state" role="status">{m.analysisMessage}</span>
+                )}
               </span>
             </button>
             <span className="pdf-row-actions">
               {m.analysisStatus !== 'needs-review' && processingId !== m.id && (
                 <button type="button" className="btn pdf-extract-btn" disabled={busy}
                   onClick={() => void processSavedPdf(m)} data-testid={`button-extract-ede-${m.id}`}>
-                  <FileText size={13} /> {m.analysisStatus === 'paused' || m.analysisStatus === 'failed' || m.analysisStatus === 'extracting' ? 'Resume EDE' : 'Create EDE data'}
+                  <FileText size={13} /> {m.analysisStatus === 'failed' ? 'Retry EDE' : m.analysisStatus === 'paused' || m.analysisStatus === 'extracting' ? 'Resume EDE' : 'Create EDE data'}
                 </button>
               )}
               {(m.analysisStatus === 'needs-review' || m.analysisStatus === 'no-tags') && (

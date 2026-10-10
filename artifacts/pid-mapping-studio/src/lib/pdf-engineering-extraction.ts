@@ -1,4 +1,5 @@
 import type { EngineeringRow, PdfTagCandidate } from '@/lib/engineering-data';
+import { PdfExtractionError, type ExtractionStage } from './pdf-extraction-error';
 
 const TAG_PATTERN = /\b(?:[A-Z]{1,8}\s*[-–]\s*)+\d{1,6}[A-Z0-9]*(?:\s*[-–]\s*[A-Z0-9]{1,8}){0,3}\b/g;
 const INSTRUMENT_PREFIXES = /^(?:AI|DI|FI|FIC|FIT|FQI|LI|LIC|LS|LSH|LSL|PI|PIC|PDI|PSH|PSL|TI|TIC|TSH|TSL|TT|PT|FT|LT|FC|PC|TC|LC|AT|AIT|XV|ZSO|ZSC)$/;
@@ -251,9 +252,13 @@ export async function extractPdfEngineeringTags(
   let ocrWorker: Awaited<ReturnType<typeof import('tesseract.js').createWorker>> | null = null;
   const candidatesByKey = new Map<string, PdfTagCandidate>();
   let ocrPages = 0;
+  let activePage = 1;
+  let stage: ExtractionStage = 'PDF text';
 
   try {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      activePage = pageNumber;
+      stage = 'PDF text';
       if (!shouldContinue()) throw new Error('Processing paused. Resume EDE extraction from the saved PDF.');
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
@@ -291,6 +296,7 @@ export async function extractPdfEngineeringTags(
       if (embeddedText.replace(/\s/g, '').length < 120 || pageCandidates.length < 20) {
         onProgress?.(pageNumber, pdf.numPages, 'OCR');
         if (!ocrWorker) {
+          stage = 'OCR startup';
           const { createWorker, PSM } = await import('tesseract.js');
           ocrWorker = await createWorker('eng', 1, {
             workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js',
@@ -300,6 +306,7 @@ export async function extractPdfEngineeringTags(
           await ocrWorker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT, preserve_interword_spaces: '1' });
         }
         const baseViewport = page.getViewport({ scale: 1 });
+        stage = 'page image';
         const scale = Math.min(3.5, 3200 / Math.max(baseViewport.width, baseViewport.height));
         const viewport = page.getViewport({ scale });
         const pageCanvas = document.createElement('canvas');
@@ -325,6 +332,7 @@ export async function extractPdfEngineeringTags(
               const tileContext = tileCanvas.getContext('2d', { willReadFrequently: false });
               if (!tileContext) throw new Error('This browser cannot prepare a page image for local OCR.');
               tileContext.drawImage(pageCanvas, left, top, width, height, 0, 0, width, height);
+              stage = 'OCR reading';
               const result = await ocrWorker.recognize(tileCanvas);
               ocrCandidates.push(...extractTagCandidates(result.data.text, pageNumber));
               ocrCandidates.push(...candidatesFromOcrWords(
@@ -357,6 +365,9 @@ export async function extractPdfEngineeringTags(
       page.cleanup();
     }
     return { candidates: [...candidatesByKey.values()], pages: pdf.numPages, ocrPages };
+  } catch (error) {
+    if (!shouldContinue()) throw error;
+    throw new PdfExtractionError(activePage, stage, error);
   } finally {
     await ocrWorker?.terminate().catch(() => undefined);
     await loading.destroy().catch(() => undefined);

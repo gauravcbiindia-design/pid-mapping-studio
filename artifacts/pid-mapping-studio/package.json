@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
-    "build:pages": "vite build --config vite.config.pages.ts",
+    "build:pages": "vite build --config vite.config.pages.ts && node scripts/verify-pages-build.mjs --check",
+    "verify:pages": "node scripts/verify-pages-build.mjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -80,6 +81,7 @@
     "@clerk/themes": "^2.4.57",
     "exceljs": "^4.4.0",
     "fflate": "^0.8.3",
-    "pdfjs-dist": "^5.4.624"
+    "pdfjs-dist": "^5.4.624",
+    "tesseract.js": "7.0.0"
   }
 }

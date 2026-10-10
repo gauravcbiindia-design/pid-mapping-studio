@@ -15,7 +15,7 @@ export function EngineeringColumnPicker({ order, hidden, onChange }: {
   return <details className="edm-column-picker">
     <summary>Columns ({order.length - hidden.length})</summary>
     <div className="edm-column-options">
-      <p>The table and current-view exports use this order. # and Object type always stay visible.</p>
+      <p>Use these checkboxes to show or hide columns. The filter icon in each heading filters row values, including (Blanks), and does not hide the column.</p>
       {order.map((field, index) => <div className="edm-column-option" key={field}>
         <label><input type="checkbox" checked={!hidden.includes(field)} aria-label={`Show ${FIELD_LABELS[field]}`}
           disabled={!hidden.includes(field) && hidden.length === order.length - 1}

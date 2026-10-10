@@ -9,6 +9,11 @@ export type PdfMeta = {
   pageCount: number;
   hash: string;
   addedAt: number;
+  analysisStatus?: 'queued' | 'extracting' | 'needs-review' | 'no-tags' | 'failed' | 'paused';
+  analysisPagesDone?: number;
+  analysisRecordCount?: number;
+  analysisMessage?: string;
+  autocadStatus?: 'not-connected' | 'waiting' | 'processing' | 'complete' | 'failed';
 };
 
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
@@ -128,6 +133,10 @@ export function savePdf(
       pageCount: input.pageCount,
       hash: input.hash,
       addedAt: Date.now(),
+      analysisStatus: 'queued',
+      analysisPagesDone: 0,
+      analysisRecordCount: 0,
+      autocadStatus: 'not-connected',
     };
     store.put(meta);
     tx.objectStore(BYTES).put(input.bytes, meta.id);
@@ -144,6 +153,24 @@ export async function getPdfBytes(id: string): Promise<ArrayBuffer> {
   const bytes = await reqDone(db.transaction(BYTES).objectStore(BYTES).get(id)) as ArrayBuffer | undefined;
   if (!bytes) throw new StoreError('storage', 'Saved PDF data was not found.');
   return bytes;
+}
+
+export function updatePdfMeta(id: string, patch: Partial<Omit<PdfMeta, 'id' | 'discipline' | 'aliasNumber' | 'alias' | 'size' | 'pageCount' | 'hash' | 'addedAt'>>): Promise<PdfMeta> {
+  return serial(async () => {
+    const db = await openDb();
+    const tx = db.transaction(META, 'readwrite');
+    const done = txDone(tx);
+    const store = tx.objectStore(META);
+    const meta = await reqDone(store.get(id)) as PdfMeta | undefined;
+    if (!meta) {
+      tx.abort();
+      throw new StoreError('storage', 'The saved PDF record could not be found.');
+    }
+    const updated = { ...meta, ...patch };
+    store.put(updated);
+    await done;
+    return updated;
+  });
 }
 
 export function deletePdfs(ids: string[]): Promise<void> {
