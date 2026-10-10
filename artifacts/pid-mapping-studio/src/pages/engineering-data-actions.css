@@ -24,7 +24,46 @@
 .edm-delete-drawing{margin:0 16px 16px}
 .edm-source-summary p{padding:0 18px;font-size:13px;line-height:1.65;color:#536961}
 .edm-source-summary>.btn{margin:0 18px 16px}
+.edm-source-locate{display:flex;align-items:center;gap:7px;width:max-content;max-width:calc(100% - 36px);margin:0 18px 12px}
+.edm-source-locate small{flex-basis:100%;margin-left:20px;color:#667a72;font-size:10px}
 .edm-record-type{padding:12px 16px}
+.edm-field-guide{margin:0 12px 8px;border:1px solid #d4ded6;border-radius:6px;background:#f8faf6;color:#405a55}
+.edm-field-guide>summary{padding:10px 12px;cursor:pointer;font-size:12px;font-weight:700}
+.edm-field-guide dl{display:grid;gap:8px;margin:0;padding:2px 12px 12px;max-height:300px;overflow:auto}
+.edm-field-guide dl>div{display:grid;gap:2px;padding-bottom:7px;border-bottom:1px solid #e3e9e3}
+.edm-field-guide dt{font-size:11px;font-weight:700}
+.edm-field-guide dd{margin:0;color:#63746e;font-size:11px;line-height:1.45}
+.edm-table select{min-height:30px;max-width:170px;border:1px solid #cbd8d1;border-radius:4px;background:#fff;padding:4px 7px;color:#173e37;font-size:11px}
+.edm-table thead th{font-weight:700;color:#405c53}
+.edm-column-heading{display:flex;align-items:center;gap:2px;padding:0 3px}
+.edm-column-heading-label{flex:1;padding:7px 3px;font:700 9px var(--app-font-mono);color:#36544c}
+.edm-table thead .edm-column-sort{flex:1;min-width:0;width:auto;padding:7px 3px;color:#36544c;font:700 9px var(--app-font-mono)}
+.edm-table thead .edm-column-filter-trigger{flex:0 0 auto;width:30px;height:30px;display:flex;align-items:center;justify-content:center;gap:1px;padding:0;border:1px solid transparent;border-radius:4px;background:transparent;color:#70847b}
+.edm-table thead .edm-column-filter-trigger:hover,.edm-table thead .edm-column-filter-trigger[aria-expanded=true]{border-color:#cbdad1;background:#e8f0ea;color:#245e53}
+.edm-table thead .edm-column-filter-trigger.active{color:#087d73;background:#e1f0eb}
+.edm-table thead .edm-column-filter-trigger:focus-visible{outline:2px solid #178477;outline-offset:1px}
+.edm-column-filter-menu{position:fixed;z-index:1500;width:min(272px,calc(100vw - 16px));max-height:min(360px,calc(100vh - 16px));display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #c8d6ce;border-radius:8px;background:#fffefa;color:#274b43;box-shadow:0 12px 36px #132c2433;font-size:12px}
+.edm-column-filter-title{font-size:13px;font-weight:700}
+.edm-column-filter-search{min-height:34px;display:flex;align-items:center;gap:7px;padding:0 8px;border:1px solid #d3ddd6;border-radius:5px;background:#fff;color:#74867e}
+.edm-column-filter-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#213f39;font-size:12px}
+.edm-column-filter-select-all,.edm-column-filter-option{display:flex;align-items:center;gap:8px;min-height:30px}
+.edm-column-filter-select-all{padding:3px 2px;border-bottom:1px solid #e2e8e3;font-weight:700}
+.edm-column-filter-select-all input,.edm-column-filter-option input{width:15px;height:15px;accent-color:#087d73}
+.edm-column-filter-options{min-height:0;overflow:auto;padding-right:2px}
+.edm-column-filter-option{padding:2px 4px;border-radius:4px;cursor:pointer}
+.edm-column-filter-option:hover{background:#f0f5f0}
+.edm-column-filter-option span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.edm-column-filter-option small{color:#819087;font-size:10px}
+.edm-column-filter-empty{padding:8px;color:#74867e}
+.edm-column-filter-actions{display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid #e2e8e3}
+.edm-column-filter-actions>span{flex:1}
+.edm-column-filter-actions button{min-height:32px;padding:5px 8px;border:1px solid #d3ddd6;border-radius:4px;background:white;color:#35574d;font-size:11px}
+.edm-column-filter-actions button:hover:not(:disabled){background:#eef4ef}
+.edm-column-filter-actions button.apply{border-color:#087d73;background:#087d73;color:white}
+.edm-column-filter-actions button:disabled{opacity:.45;cursor:not-allowed}
+.edm-column-filter-actions .edm-column-filter-clear{margin-right:auto;padding-left:0;border-color:transparent;background:transparent;color:#6e7d75}
+.edm-autocad-status{margin:0 18px 16px;padding:9px 11px;border:1px solid #e8d3ad;border-radius:5px;background:#f7edda;color:#655238;font-size:11px;line-height:1.5}
+.edm-source-summary .edm-autocad-status{margin-top:0}
 .edm-page .btn:disabled{opacity:.45;cursor:not-allowed}
 .edm-page:has(.edm-storage-error) .edm-save-state{display:none}
 .edm-page:has(.edm-source-summary) .edm-main{grid-template-rows:auto minmax(0,1fr)}
@@ -33,6 +72,7 @@
  .edm-page:has(.edm-source-summary) .edm-properties{max-height:none}
  .edm-file-actions,.edm-report-actions,.edm-add-record{padding:12px}
  .edm-file-actions .btn,.edm-report-actions .btn{min-height:42px}
+  .edm-source-locate{width:calc(100% - 36px);min-height:42px;flex-wrap:wrap}
  .edm-file-actions>span{width:100%}
  .edm-add-record>button{width:100%}
  .edm-create-drawing{padding:12px}

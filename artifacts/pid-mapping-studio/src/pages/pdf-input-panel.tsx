@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Download, FilePlus2, FileText, HardDrive, Loader2, Trash2, X, Eye, Monitor,
+  AlertTriangle, Download, FilePlus2, FileText, HardDrive, Loader2, Trash2, X, Eye, Monitor, RefreshCw,
 } from 'lucide-react';
 import PdfPagePreview from '@/components/pdf-page-preview';
 import {
   MAX_FILE_BYTES, MAX_TOTAL_BYTES, StoreError, clearDiscipline, deletePdfs, getPdfBytes,
-  listPdfs, savePdf, sha256Hex, totalStoredBytes, type PdfMeta,
+  listPdfs, savePdf, sha256Hex, totalStoredBytes, updatePdfMeta, type PdfMeta,
 } from '@/lib/local-pdf-store';
+import { extractPdfEngineeringTags } from '@/lib/pdf-engineering-extraction';
+import { getEngineeringDrawings, savePdfExtraction } from '@/lib/engineering-data';
 import './pdf-input-panel.css';
 
 type Discipline = 'PFD' | 'P&ID';
 type Note = { id: number; kind: 'error' | 'info'; text: string };
 type Task = { id: number; file: File; cancelled: boolean; state: 'queued' | 'working' | 'done' | 'failed' };
-type Progress = { total: number; done: number; pagesDone: number; active: number } | null;
+type Progress = {
+  total: number;
+  done: number;
+  pagesDone: number;
+  active: number;
+  phase: 'checking' | 'extracting';
+  currentAlias?: string;
+  pageNow?: number;
+  pageTotal?: number;
+} | null;
 
 const MB = 1024 * 1024;
 function fmt(bytes: number): string {
@@ -47,11 +58,15 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
   const [usedBytes, setUsedBytes] = useState(0);
   const [notes, setNotes] = useState<Note[]>([]);
   const [progress, setProgress] = useState<Progress>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [targetRecordId, setTargetRecordId] = useState<string | null>(null);
+  const [sourceRevision, setSourceRevision] = useState(0);
   const [page, setPage] = useState(1);
   const [confirm, setConfirm] = useState<{ type: 'one'; id: string } | { type: 'all' } | null>(null);
   const tasksRef = useRef<Task[]>([]);
   const mounted = useRef(true);
+  const sourceTargetHandled = useRef(false);
   const noteSeq = useRef(0);
   const disciplineRef = useRef(discipline);
   disciplineRef.current = discipline;
@@ -79,6 +94,46 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
     }
   }, [discipline]);
 
+  const runEdeExtraction = async (
+    meta: PdfMeta,
+    bytes: ArrayBuffer,
+    shouldContinue: () => boolean,
+    reportPage: (page: number, total: number, method: 'PDF text' | 'OCR') => void,
+  ) => {
+    await updatePdfMeta(meta.id, {
+      analysisStatus: 'extracting',
+      analysisPagesDone: 0,
+      analysisRecordCount: 0,
+      analysisMessage: '',
+      autocadStatus: 'not-connected',
+    });
+    if (mounted.current) await refresh();
+    let result;
+    try {
+      result = await extractPdfEngineeringTags(bytes, reportPage, shouldContinue);
+    } catch (error) {
+      if (!shouldContinue()) throw new StoreError('cancelled', 'EDE extraction paused.');
+      throw error;
+    }
+    if (!shouldContinue()) throw new StoreError('cancelled', 'EDE extraction paused.');
+    const ede = savePdfExtraction(discipline === 'PFD' ? 'pfd' : 'pid', {
+      id: meta.id,
+      alias: meta.alias,
+    }, result.candidates);
+    if (mounted.current) setSourceRevision((revision) => revision + 1);
+    const status = ede.recordCount ? 'needs-review' : 'no-tags';
+    await updatePdfMeta(meta.id, {
+      analysisStatus: status,
+      analysisPagesDone: result.pages,
+      analysisRecordCount: ede.recordCount,
+      analysisMessage: result.ocrPages
+        ? `Read ${result.ocrPages} scanned page(s) with local OCR. Confirm all ${ede.recordCount} candidate(s).`
+        : `Read searchable PDF text. Confirm all ${ede.recordCount} candidate(s).`,
+      autocadStatus: 'not-connected',
+    });
+    return ede;
+  };
+
   useEffect(() => {
     mounted.current = true;
     setLoading(true);
@@ -94,6 +149,20 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
       tasksRef.current = [];
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (sourceTargetHandled.current) return;
+    const targetId = new URLSearchParams(window.location.search).get('pdf');
+    const target = saved.find((item) => item.id === targetId);
+    if (!target) return;
+    const recordId = new URLSearchParams(window.location.search).get('record');
+    if (recordId) setTargetRecordId(recordId);
+    sourceTargetHandled.current = true;
+    setSelectedId(target.id);
+    const targetPage = Number(new URLSearchParams(window.location.search).get('page'));
+    setPage(Number.isInteger(targetPage) && targetPage >= 1 && targetPage <= target.pageCount ? targetPage : 1);
+    window.setTimeout(() => document.querySelector('[data-testid="panel-source-page"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+  }, [saved]);
 
   const processTask = async (task: Task, counters: { done: number; pagesDone: number }, total: number) => {
     const taskDiscipline = discipline;
@@ -121,9 +190,28 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         throw new Error('Duplicate check is not supported in this browser, so the PDF was not saved.');
       }
       if (!alive()) return;
-      await savePdf({ discipline: taskDiscipline, bytes, pageCount: pages, hash }, alive);
-      task.state = 'done';
+      const meta = await savePdf({ discipline: taskDiscipline, bytes, pageCount: pages, hash }, alive);
       counters.pagesDone += pages;
+      if (mounted.current) {
+        setProgress({ total, done: counters.done, pagesDone: counters.pagesDone, active: 1, phase: 'extracting', currentAlias: meta.alias, pageNow: 0, pageTotal: pages });
+        await refresh();
+      }
+      try {
+        const ede = await runEdeExtraction(meta, bytes, alive, (pageNumber, pageTotal) => {
+          if (mounted.current) setProgress((current) => current
+            ? { ...current, phase: 'extracting', currentAlias: meta.alias, pageNow: pageNumber, pageTotal }
+            : current);
+        });
+        if (alive()) addNote('info', `${meta.alias}: ${ede.recordCount} tag candidate(s) added to EDE${ede.recordCount ? ' for review' : ' (no tags found)'}. AutoCAD is not connected.`);
+      } catch (e) {
+        const cancelled = e instanceof StoreError && e.code === 'cancelled';
+        await updatePdfMeta(meta.id, {
+          analysisStatus: cancelled ? 'paused' : 'failed',
+          analysisMessage: cancelled ? 'Extraction paused. Resume it from this saved PDF.' : 'PDF saved, but EDE extraction did not finish. Try again from the PDF row.',
+        }).catch(() => undefined);
+        if (!cancelled && alive()) addNote('error', `${meta.alias} was saved, but EDE extraction failed. Your PDF is still available; retry extraction from its row.`);
+      }
+      task.state = 'done';
       if (mounted.current) await refresh();
     } catch (e) {
       task.state = 'failed';
@@ -133,7 +221,9 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
     } finally {
       counters.done += 1;
       if (mounted.current) {
-        setProgress({ total, done: counters.done, pagesDone: counters.pagesDone, active: 0 });
+        setProgress((current) => current
+          ? { ...current, total, done: counters.done, pagesDone: counters.pagesDone, active: 0 }
+          : current);
       }
     }
   };
@@ -147,7 +237,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
     const tasks: Task[] = accepted.map((file) => ({ id: ++noteSeq.current, file, cancelled: false, state: 'queued' }));
     tasksRef.current = [...tasksRef.current, ...tasks];
     const counters = { done: 0, pagesDone: 0 };
-    setProgress({ total: tasks.length, done: 0, pagesDone: 0, active: 0 });
+    setProgress({ total: tasks.length, done: 0, pagesDone: 0, active: 0, phase: 'checking' });
     let next = 0;
     const worker = async () => {
       while (next < tasks.length && mounted.current) {
@@ -156,13 +246,39 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         await processTask(t, counters, tasks.length);
       }
     };
-    void Promise.all([worker(), worker()]).then(() => {
+    // One OCR job at a time keeps browser memory and CPU use predictable on large batches.
+    void worker().then(() => {
       tasksRef.current = tasksRef.current.filter((t) => !tasks.includes(t));
       if (!mounted.current) return;
       const ok = tasks.filter((t) => t.state === 'done').length;
-      if (ok) addNote('info', `${ok} PDF(s) saved on this device.`);
+      if (ok) addNote('info', `${ok} PDF(s) saved on this device. EDE candidates need your review; AutoCAD is not connected.`);
       setProgress(null);
     });
+  };
+
+  const processSavedPdf = async (meta: PdfMeta) => {
+    if (progress || processingId) return;
+    setProcessingId(meta.id);
+    setProgress({ total: 1, done: 0, pagesDone: 0, active: 1, phase: 'extracting', currentAlias: meta.alias, pageNow: 0, pageTotal: meta.pageCount });
+    try {
+      const bytes = await getPdfBytes(meta.id);
+      const ede = await runEdeExtraction(meta, bytes, () => mounted.current, (pageNumber, pageTotal) => {
+        if (mounted.current) setProgress((current) => current
+          ? { ...current, phase: 'extracting', pageNow: pageNumber, pageTotal }
+          : current);
+      });
+      addNote('info', `${meta.alias}: ${ede.recordCount} tag candidate(s) added to EDE${ede.recordCount ? ' for review' : ' (no tags found)'}. AutoCAD is not connected.`);
+    } catch {
+      await updatePdfMeta(meta.id, {
+        analysisStatus: 'failed',
+        analysisMessage: 'EDE extraction did not finish. Check the connection and try again.',
+      }).catch(() => undefined);
+      addNote('error', `${meta.alias} remains saved. EDE extraction failed; check the internet connection for OCR assets, then retry.`);
+    } finally {
+      setProgress(null);
+      setProcessingId(null);
+      await refresh();
+    }
   };
 
   const cancelBatch = () => {
@@ -204,6 +320,19 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
   };
 
   const selected = useMemo(() => saved.find((m) => m.id === selectedId) ?? null, [saved, selectedId]);
+  const sourceMarkers = useMemo(() => {
+    if (!selectedId || !targetRecordId) return [];
+    try {
+      const workspace = getEngineeringDrawings(discipline === 'PFD' ? 'pfd' : 'pid');
+      const drawing = workspace.find((item) => item.sourcePdfId === selectedId);
+      const row = drawing?.rows.find((item) => item.id === targetRecordId);
+      return (row?.sourceLocations ?? [])
+        .filter((location) => location.pageNumber === page)
+        .map((location) => ({ id: row!.id, label: row!.itemTag, location }));
+    } catch {
+      return [];
+    }
+  }, [discipline, page, selectedId, sourceRevision, targetRecordId]);
   const totalPages = saved.reduce((t, m) => t + m.pageCount, 0);
   const busy = progress !== null;
   const pct = Math.min(100, (usedBytes / MAX_TOTAL_BYTES) * 100);
@@ -236,6 +365,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         <span>
           <strong>Saved on this device only.</strong> These PDFs stay in this browser. They are not uploaded, not backed up to any cloud, and not synced to other devices.
           Clearing browser data will remove them. Download an original if you need a copy. Original PDFs are unchanged; generic aliases hide filenames, not names or logos inside a PDF.
+          {' '}Searchable text is read here; scanned pages use OCR in this browser. Only the generic OCR engine and English language data are downloaded; the PDF itself is not sent to that service.
           {!hashSupported && ' Duplicate check needs a secure browser context, so new PDFs cannot be added here.'}
         </span>
       </div>
@@ -253,10 +383,14 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
       {progress && (
         <div className="pdf-progress" role="status" aria-live="polite" data-testid="status-pdf-progress">
           <div className="pdf-progress-top">
-            <span><Loader2 size={12} className="pdf-spin" /> Checking and saving: {progress.done} of {progress.total} file(s) finished · {progress.pagesDone} page(s) verified</span>
+            <span><Loader2 size={12} className="pdf-spin" /> {progress.phase === 'checking'
+              ? `Checking and saving: ${progress.done} of ${progress.total} file(s) finished · ${progress.pagesDone} page(s) verified`
+              : `${progress.currentAlias ?? 'PDF'} · reading page ${progress.pageNow ?? 0} of ${progress.pageTotal ?? 0} for EDE`}</span>
             <button type="button" className="btn" onClick={cancelBatch} data-testid="button-cancel-import" aria-label="Cancel remaining imports">Cancel</button>
           </div>
-          <div className="pdf-meter"><span style={{ width: `${(progress.done / progress.total) * 100}%` }} /></div>
+          <div className="pdf-meter"><span style={{ width: `${progress.phase === 'checking'
+            ? (progress.done / progress.total) * 100
+            : ((progress.done + (progress.pageTotal ? (progress.pageNow ?? 0) / progress.pageTotal : 0)) / progress.total) * 100}%` }} /></div>
         </div>
       )}
 
@@ -294,16 +428,48 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
           </div>
         ) : saved.length ? saved.map((m) => (
           <div className={`pdf-file-row${m.id === selectedId ? ' is-selected' : ''}`} key={m.id} data-testid={`row-pdf-file-${m.id}`}>
-            <button type="button" className="pdf-select" onClick={() => { setSelectedId(m.id); setPage(1); }}
+            <button type="button" className="pdf-select" onClick={() => { setSelectedId(m.id); setTargetRecordId(null); setPage(1); }}
               aria-label={`Preview ${m.alias}`} aria-pressed={m.id === selectedId} data-testid={`button-select-pdf-${m.id}`}>
               <span className="pdf-file-icon"><FileText size={17} /></span>
               <span className="pdf-file-details">
                 <strong className="pdf-filename" data-testid={`text-pdf-name-${m.id}`}>{m.alias}</strong>
                 <span className="pdf-file-meta">{m.pageCount} page(s) · {fmt(m.size)} · saved locally</span>
+                <span className="pdf-analysis-state" data-testid={`status-ede-${m.id}`}>
+                  EDE: {m.analysisStatus === 'needs-review'
+                    ? `${m.analysisRecordCount ?? 0} candidate(s) · review required`
+                    : m.analysisStatus === 'no-tags'
+                      ? 'No tag candidates found'
+                      : m.analysisStatus === 'extracting'
+                        ? processingId === m.id ? 'Extraction in progress' : 'Paused · resume available'
+                        : m.analysisStatus === 'failed'
+                          ? 'Extraction failed'
+                          : m.analysisStatus === 'paused'
+                            ? 'Paused · resume available'
+                            : 'Not extracted yet'}
+                  {' · AutoCAD: not connected'}
+                </span>
               </span>
             </button>
             <span className="pdf-row-actions">
-              <button type="button" className="pdf-icon-btn" aria-label={`Preview ${m.alias}`} onClick={() => { setSelectedId(m.id); setPage(1); }} data-testid={`button-preview-pdf-${m.id}`}><Eye size={15} /></button>
+              {m.analysisStatus !== 'needs-review' && processingId !== m.id && (
+                <button type="button" className="btn pdf-extract-btn" disabled={busy}
+                  onClick={() => void processSavedPdf(m)} data-testid={`button-extract-ede-${m.id}`}>
+                  <FileText size={13} /> {m.analysisStatus === 'paused' || m.analysisStatus === 'failed' || m.analysisStatus === 'extracting' ? 'Resume EDE' : 'Create EDE data'}
+                </button>
+              )}
+              {(m.analysisStatus === 'needs-review' || m.analysisStatus === 'no-tags') && (
+                <a className="btn pdf-extract-btn" href={`/workspace/${discipline === 'PFD' ? 'pfd' : 'pid'}/engineering-data?source=${encodeURIComponent(m.id)}`}>
+                  Open EDE
+                </a>
+              )}
+              {m.analysisStatus === 'needs-review' && (
+                <button type="button" className="btn pdf-extract-btn" disabled={busy}
+                  onClick={() => void processSavedPdf(m)} data-testid={`button-refresh-source-links-${m.id}`}>
+                  <RefreshCw size={13} /> Recheck tags &amp; locations
+                </button>
+              )}
+              {processingId === m.id && <span className="pdf-running-label"><Loader2 size={13} className="pdf-spin" /> Reading</span>}
+              <button type="button" className="pdf-icon-btn" aria-label={`Preview ${m.alias}`} onClick={() => { setSelectedId(m.id); setTargetRecordId(null); setPage(1); }} data-testid={`button-preview-pdf-${m.id}`}><Eye size={15} /></button>
               <button type="button" className="pdf-icon-btn" aria-label={`Download original source ${m.alias}`} onClick={() => void download(m)} data-testid={`button-download-pdf-${m.id}`}><Download size={15} /></button>
               <button type="button" className="pdf-icon-btn danger" aria-label={`Remove ${m.alias}`} onClick={() => setConfirm({ type: 'one', id: m.id })} data-testid={`button-remove-pdf-${m.id}`}><X size={15} /></button>
             </span>
@@ -331,13 +497,17 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
             <span>of {selected.pageCount} in {selected.alias}</span>
           </div>
           <PdfPagePreview fileId={selected.id} alias={selected.alias} pageCount={selected.pageCount}
-            page={page} onPageChange={setPage} loadBytes={getPdfBytes} />
+            page={page} onPageChange={setPage} loadBytes={getPdfBytes} markers={sourceMarkers}
+            onMarkerClick={(recordId) => {
+              const route = discipline === 'PFD' ? 'pfd' : 'pid';
+              window.location.assign(`/workspace/${route}/engineering-data?source=${encodeURIComponent(selected.id)}&record=${encodeURIComponent(recordId)}`);
+            }} />
         </div>
       )}
 
       <div className="pdf-final-status" role="note" data-testid="text-conversion-unavailable">
-        <strong><Monitor size={13} style={{ verticalAlign: '-2px' }} /> Windows AutoCAD is not connected.</strong>{' '}
-        DWG conversion is unavailable here. This page only stores and previews your original PDFs. Nothing shown above is generated CAD.
+        <strong><Monitor size={13} style={{ verticalAlign: '-2px' }} /> AutoCAD 2020 is not connected to this browser.</strong>{' '}
+        PDF text/OCR can create review-required EDE tag candidates on this device. DWG processing has not started and no CAD file is generated until the Windows AutoCAD connector is installed and connected.
       </div>
     </section>
   );

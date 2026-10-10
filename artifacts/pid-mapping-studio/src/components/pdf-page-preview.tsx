@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import type { PdfSourceLocation } from '@/lib/engineering-data';
+
+export type PdfPreviewMarker = {
+  id: string;
+  label: string;
+  location: PdfSourceLocation;
+};
 
 type Props = {
   fileId: string;
@@ -8,6 +15,8 @@ type Props = {
   page: number;
   onPageChange: (page: number) => void;
   loadBytes: (id: string) => Promise<ArrayBuffer>;
+  markers?: PdfPreviewMarker[];
+  onMarkerClick?: (id: string) => void;
 };
 
 async function loadPdfjs() {
@@ -19,7 +28,16 @@ async function loadPdfjs() {
   return lib;
 }
 
-export default function PdfPagePreview({ fileId, alias, pageCount, page, onPageChange, loadBytes }: Props) {
+export default function PdfPagePreview({
+  fileId,
+  alias,
+  pageCount,
+  page,
+  onPageChange,
+  loadBytes,
+  markers = [],
+  onMarkerClick,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -89,8 +107,37 @@ export default function PdfPagePreview({ fileId, alias, pageCount, page, onPageC
         </div>
       </div>
       <div className="ppv-stage" ref={boxRef}>
-        <canvas ref={canvasRef} aria-label={`Original source page ${page} of ${alias}`} data-testid="canvas-source-preview"
-          style={{ visibility: state === 'ready' ? 'visible' : 'hidden' }} />
+        <div className="ppv-canvas-wrap" style={{ visibility: state === 'ready' ? 'visible' : 'hidden' }}>
+          <canvas ref={canvasRef} aria-label={`Original source page ${page} of ${alias}`} data-testid="canvas-source-preview" />
+          {state === 'ready' && markers.length > 0 && (
+            <div className="ppv-markers" aria-label="Extracted tag source locations">
+              {markers.map((marker, index) => (
+                <button
+                  className="ppv-marker"
+                  key={`${marker.id}-${marker.location.pageNumber}-${index}`}
+                  type="button"
+                  style={{
+                    left: `${marker.location.x * 100}%`,
+                    top: `${marker.location.y * 100}%`,
+                    width: `${Math.max(marker.location.width * 100, 1.1)}%`,
+                    height: `${Math.max(marker.location.height * 100, 1.2)}%`,
+                  }}
+                  aria-label={`OCR location for ${marker.label}; verify against the PDF`}
+                  title={`${marker.label} · OCR candidate location`}
+                  onClick={() => onMarkerClick?.(marker.id)}
+                  data-testid={`marker-source-${marker.id}-${index}`}
+                >
+                  <span>{marker.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {markers.length > 0 && (
+          <div className="ppv-marker-note" role="note">
+            Red boxes show OCR candidate locations. Confirm each tag against the original PDF.
+          </div>
+        )}
         {state === 'loading' && (
           <div className="ppv-overlay" role="status" data-testid="status-preview-loading"><Loader2 size={18} className="pdf-spin" /> Rendering page</div>
         )}

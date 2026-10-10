@@ -2,14 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Database, Download, FileText, HardDrive, Plus, Search, SlidersHorizontal, Trash2, Upload } from 'lucide-react';
 import { Link } from 'wouter';
 import type { Discipline } from '@/lib/hierarchy-store';
-import { ENGINEERING_FIELDS, FIELD_LABELS, OBJECT_TYPES, createEngineeringRow, downloadEngineeringFile, engineeringBackup, engineeringCsv, getEngineeringDrawings, getEngineeringSavedText, parseEngineeringBackup, parseEngineeringCsv, saveEngineeringDrawings } from '@/lib/engineering-data';
+import { ENGINEERING_FIELDS, FIELD_HELP, FIELD_LABELS, OBJECT_TYPES, createEngineeringRow, downloadEngineeringFile, engineeringBackup, engineeringCsv, getEngineeringDrawings, getEngineeringSavedText, parseEngineeringBackup, parseEngineeringCsv, saveEngineeringDrawings } from '@/lib/engineering-data';
 import type { EngineeringDrawing, EngineeringField, EngineeringRow } from '@/lib/engineering-data';
 import { EngineeringColumnPicker } from '@/components/engineering-column-picker';
+import { EngineeringColumnFilter } from '@/components/engineering-column-filter';
 import { engineeringGroupSummary, engineeringViewCsv, engineeringViewExcel } from '@/lib/engineering-table-export';
 import type { EngineeringTableView } from '@/lib/engineering-table-export';
+import { getEngineeringColumnFilterOptions, matchesEngineeringColumnFilters } from '@/lib/engineering-table-filter';
+import type { EngineeringColumnFilterOption, EngineeringColumnFilters, EngineeringFilterColumn } from '@/lib/engineering-table-filter';
 import './engineering-data-actions.css';
 
-const objectTypes = ['All types','Equipment','Pipe Run','OPC','Instrument','Valve'];
+const objectTypes = ['All types', ...OBJECT_TYPES];
+const filterColumns: EngineeringFilterColumn[] = ['type', ...ENGINEERING_FIELDS];
+const typeAbbreviation = (type: EngineeringRow['type']) =>
+  type.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
 export default function EngineeringDataManager({ discipline }: { discipline: Discipline }) {
   const [initial] = useState(() => {
     try { return { drawings: getEngineeringDrawings(discipline), raw: getEngineeringSavedText(discipline), error: '' }; }
@@ -21,6 +27,17 @@ export default function EngineeringDataManager({ discipline }: { discipline: Dis
   const savedText = useRef(initial.raw);
   const [drawingId,setDrawingId] = useState(drawings[0]?.id ?? '');
   const drawing = drawings.find((item) => item.id === drawingId) ?? drawings[0] ?? { id: '', name: 'No drawing selected', revision: '', rows: [] };
+  useEffect(() => {
+    const sourceId = new URLSearchParams(window.location.search).get('source');
+    const sourceDrawing = sourceId ? drawings.find((item) => item.sourcePdfId === sourceId) : undefined;
+    if (sourceDrawing && sourceDrawing.id !== drawingId) setDrawingId(sourceDrawing.id);
+  }, [drawings, drawingId]);
+  useEffect(() => {
+    setColumnFilters({});
+    setSearch('');
+    setObjectType('All types');
+    setPage(0);
+  }, [drawingId, discipline]);
   const rows = drawing.rows;
   const [selectedId,setSelectedId] = useState(rows[0]?.id ?? '');
   const [drawingName,setDrawingName] = useState('');
@@ -34,6 +51,7 @@ export default function EngineeringDataManager({ discipline }: { discipline: Dis
   const [pageSize,setPageSize] = useState(12);
   const [sort,setSort] = useState<{field: EngineeringField; direction: 1|-1}>({field:'itemTag',direction:1});
   const [groups,setGroups] = useState<EngineeringField[]>([]);
+  const [columnFilters,setColumnFilters] = useState<EngineeringColumnFilters>({});
   const [columnOrder, setColumnOrder] = useState<EngineeringField[]>([...ENGINEERING_FIELDS]);
   const [hiddenColumns, setHiddenColumns] = useState<EngineeringField[]>([]);
   const tableFields = columnOrder.filter((field) => !hiddenColumns.includes(field));
@@ -57,11 +75,29 @@ export default function EngineeringDataManager({ discipline }: { discipline: Dis
     return () => { mounted.current = false; window.removeEventListener('storage', refresh); };
   },[discipline]);
   const selected = rows.find((row) => row.id === selectedId) ?? null;
+  useEffect(() => {
+    const recordId = new URLSearchParams(window.location.search).get('record');
+    if (!recordId) return;
+    const sourceRow = rows.find((row) => row.id === recordId);
+    if (sourceRow && sourceRow.id !== selectedId) setSelectedId(sourceRow.id);
+  }, [rows, selectedId]);
+  const columnFilterOptions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return Object.fromEntries(filterColumns.map((field) => {
+      const otherFilters = { ...columnFilters };
+      delete otherFilters[field];
+      const availableRows = rows.filter((row) => (objectType === 'All types' || row.type === objectType) &&
+        (!query || Object.values(row).join(' ').toLowerCase().includes(query)) &&
+        matchesEngineeringColumnFilters(row, otherFilters));
+      return [field, getEngineeringColumnFilterOptions(availableRows, field)];
+    })) as Record<EngineeringFilterColumn, EngineeringColumnFilterOption[]>;
+  }, [rows, search, objectType, columnFilters]);
   const visibleRows = useMemo(() => {
     const q=search.trim().toLowerCase();
     return rows.filter((row) => (objectType==='All types'||row.type===objectType) &&
-      (!q || Object.values(row).join(' ').toLowerCase().includes(q)));
-  },[rows,search,objectType]);
+      (!q || Object.values(row).join(' ').toLowerCase().includes(q)) &&
+      matchesEngineeringColumnFilters(row,columnFilters));
+  },[rows,search,objectType,columnFilters]);
   const sortedRows = useMemo(() => [...visibleRows].sort((a,b) => {
     for (const field of groups) {
       const grouped = String(a[field] || '—').localeCompare(String(b[field] || '—'),undefined,{numeric:true});
@@ -137,6 +173,17 @@ export default function EngineeringDataManager({ discipline }: { discipline: Dis
     } catch (error) { setStorageError(error instanceof Error ? error.message : 'This file could not be imported. No records were changed.'); }
   };
   const sortBy=(field:EngineeringField) => setSort((current)=>({field,direction:current.field===field?current.direction===1?-1:1:1}));
+  const applyColumnFilter=(field:EngineeringFilterColumn,values:string[]|undefined)=>{
+    const allValues=columnFilterOptions[field].map((option)=>option.value);
+    const includesEveryValue=values!==undefined&&allValues.every((value)=>values.includes(value))&&values.length===allValues.length;
+    setColumnFilters((current)=>{
+      const next={...current};
+      if(values===undefined||includesEveryValue) delete next[field];
+      else next[field]=values;
+      return next;
+    });
+    setPage(0);
+  };
   const addGroup=(field:EngineeringField) => setGroups((current)=>current.includes(field)?current:[...current,field]);
   const dropGroup=(event:React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -226,8 +273,14 @@ export default function EngineeringDataManager({ discipline }: { discipline: Dis
       <section className="edm-main">
         <section className="edm-preview panel edm-source-summary">
           <header><div><span className="edm-section-kicker">ACTIVE DRAWING RECORD</span><strong data-testid="text-active-drawing">{drawing.name}</strong></div><span className="edm-revision">{drawing.revision}</span></header>
-          <p>Records here are entered manually or imported from CSV. Automatic PDF extraction and drawing-to-record linking are not connected yet.</p>
-          <Link href={`/workspace/${discipline}`} className="btn subtle"><FileText size={14}/> View original PDFs</Link>
+          <p>{drawing.sourcePdfId
+            ? `${drawing.sourceAlias ?? 'PDF'} tag candidates and clearly labelled values are stored here. Every extracted record needs review. Blank fields mean the PDF text/OCR did not provide a clear value.`
+            : 'Add records manually or import them from CSV. New PDF tag candidates appear here with a source page and a review status.'}</p>
+          <Link href={drawing.sourcePdfId
+            ? `/workspace/${discipline}?pdf=${encodeURIComponent(drawing.sourcePdfId)}&page=${encodeURIComponent(drawing.rows.find((row) => row.sourcePdfId)?.sourcePage || '1')}#pdf-workflow-title`
+            : `/workspace/${discipline}`}
+            className="btn subtle"><FileText size={14}/> {drawing.sourcePdfId ? 'Open source PDF page' : 'View original PDFs'}</Link>
+          <div className="edm-autocad-status" role="note"><strong>AutoCAD 2020: not connected.</strong> EDE extraction does not create a DWG.</div>
         </section>
         <section className="edm-editor panel">
           <div className="edm-editor-title"><div><span className="edm-section-kicker">DATA WORKSPACE</span><h2>Engineering Data Editor</h2></div><div className="edm-type-chip">{objectType}</div></div>
@@ -250,20 +303,35 @@ export default function EngineeringDataManager({ discipline }: { discipline: Dis
             {exportError && <strong role="alert">{exportError}</strong>}
           </div>
           <EngineeringColumnPicker order={columnOrder} hidden={hiddenColumns} onChange={(order,hidden)=>{setColumnOrder(order);setHiddenColumns(hidden);}}/>
-          <div className="edm-grid-toolbar"><label className="edm-global-search"><Search size={14}/><input placeholder="Search all fields…" aria-label="Search engineering data" value={search} onChange={(e)=>{setSearch(e.target.value);setPage(0);}} data-testid="input-engineering-search"/></label><span className="edm-result-total" data-testid="text-result-count">{visibleRows.length} records</span><button className="edm-toolbar-button" onClick={()=>{setSearch('');setObjectType('All types');setPage(0);}} data-testid="button-clear-filters"><SlidersHorizontal size={14}/> Clear filters</button></div>
+          <div className="edm-grid-toolbar"><label className="edm-global-search"><Search size={14}/><input placeholder="Search all fields…" aria-label="Search engineering data" value={search} onChange={(e)=>{setSearch(e.target.value);setPage(0);}} data-testid="input-engineering-search"/></label><span className="edm-result-total" data-testid="text-result-count">{visibleRows.length} records</span><button className="edm-toolbar-button" onClick={()=>{setSearch('');setObjectType('All types');setColumnFilters({});setPage(0);}} data-testid="button-clear-filters"><SlidersHorizontal size={14}/> Clear filters</button></div>
           <div className="edm-groups" onDragOver={(e)=>e.preventDefault()} onDrop={dropGroup} data-testid="drop-column-group"><span>GROUP BY</span>{groups.length?groups.map((field)=><button key={field} onClick={()=>setGroups((current)=>current.filter((item)=>item!==field))} title="Remove group">{FIELD_LABELS[field]} <b>×</b></button>):<em>Drag a column header here to group records</em>}</div>
           <label className="edm-group-select">Add group<select value="" aria-label="Add group" onChange={(event)=>{if(event.target.value){addGroup(event.target.value as EngineeringField);setPage(0);}}}><option value="">Choose a column…</option>{ENGINEERING_FIELDS.filter((field)=>!groups.includes(field)).map((field)=><option value={field} key={field}>{FIELD_LABELS[field]}</option>)}</select></label>
           {groupSummaries.map((group)=><div className="edm-group-summary" key={group.field}><strong>{group.label}</strong>{group.values.map(({value,count})=><span key={value}>{value}<i>{count}</i></span>)}</div>)}
-          <div className="edm-table-wrap"><table className="edm-table"><thead><tr><th className="edm-rownum">#</th><th>Object type</th>{tableFields.map((field)=><th key={field} draggable onDragStart={(e)=>e.dataTransfer.setData('text/engineering-field',field)}><button onClick={()=>sortBy(field)} data-testid={`button-sort-${field}`}>{FIELD_LABELS[field]}<span>{sort.field===field?(sort.direction===1?'↑':'↓'):'↕'}</span></button></th>)}</tr></thead>
-          <tbody>{currentRows.map((row,index)=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>setSelectedId(row.id)} data-testid={`row-engineering-${row.id}`}><td className="edm-rownum">{page*pageSize+index+1}</td><td><span className={`edm-type-badge ${row.type.toLowerCase().replace(' ','-')}`}>{row.type}</span></td>{tableFields.map((field)=><td key={field} className={field==='itemTag'?'mono':''}>{selectedId===row.id?<input aria-label={`${FIELD_LABELS[field]} for ${row.itemTag}`} value={row[field]} onClick={(e)=>e.stopPropagation()} onChange={(e)=>patchRow(row.id,field,e.target.value)} data-testid={`input-cell-${row.id}-${field}`}/>:<span>{row[field]||'—'}</span>}</td>)}</tr>)}
+          <div className="edm-table-wrap"><table className="edm-table"><thead><tr><th className="edm-rownum">#</th><th><div className="edm-column-heading"><span className="edm-column-heading-label">Object type</span><EngineeringColumnFilter label="Object type" options={columnFilterOptions.type} selectedValues={columnFilters.type} onApply={(values)=>applyColumnFilter('type',values)}/></div></th>{tableFields.map((field)=><th key={field} draggable onDragStart={(e)=>e.dataTransfer.setData('text/engineering-field',field)}><div className="edm-column-heading"><button className="edm-column-sort" title={FIELD_HELP[field]} onClick={()=>sortBy(field)} data-testid={`button-sort-${field}`}>{FIELD_LABELS[field]}<span>{sort.field===field?(sort.direction===1?'↑':'↓'):'↕'}</span></button><EngineeringColumnFilter label={FIELD_LABELS[field]} options={columnFilterOptions[field]} selectedValues={columnFilters[field]} onApply={(values)=>applyColumnFilter(field,values)}/></div></th>)}</tr></thead>
+          <tbody>{currentRows.map((row,index)=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>setSelectedId(row.id)} data-testid={`row-engineering-${row.id}`}><td className="edm-rownum">{page*pageSize+index+1}</td><td><span className={`edm-type-badge ${row.type.toLowerCase().replace(/\s+/g,'-')}`}>{row.type}</span></td>{tableFields.map((field)=><td key={field} className={field==='itemTag'?'mono':''}>{selectedId===row.id&&field==='reviewStatus'?<select aria-label={`${FIELD_LABELS[field]} for ${row.itemTag}`} value={row.reviewStatus} onClick={(e)=>e.stopPropagation()} onChange={(e)=>patchRow(row.id,field,e.target.value)} data-testid={`input-cell-${row.id}-${field}`}><option>Needs review</option><option>Reviewed</option><option>Manual</option></select>:selectedId===row.id?<input aria-label={`${FIELD_LABELS[field]} for ${row.itemTag}`} value={row[field]} onClick={(e)=>e.stopPropagation()} onChange={(e)=>patchRow(row.id,field,e.target.value)} data-testid={`input-cell-${row.id}-${field}`}/>:<span>{row[field]||'—'}</span>}</td>)}</tr>)}
           {!currentRows.length&&<tr><td colSpan={tableFields.length+2}><div className="edm-empty">No records match these filters.</div></td></tr>}</tbody></table></div>
            <footer className="edm-pagination"><span>Showing <strong>{sortedRows.length? page*pageSize+1:0}–{Math.min((page+1)*pageSize,sortedRows.length)}</strong> of <strong>{sortedRows.length}</strong></span><label>Rows <select value={pageSize} onChange={(e)=>{setPageSize(Number(e.target.value));setPage(0);}} aria-label="Rows per page" data-testid="select-page-size">{[8,12,24,36].map((size)=><option key={size} value={size}>{size}</option>)}</select> per page</label><div className="edm-page-controls"><button disabled={page===0} onClick={()=>changePage(page-1)} aria-label="Previous page" data-testid="button-page-previous"><ChevronLeft size={15}/></button><span>Page {page+1} of {pageCount}</span><button disabled={page>=pageCount-1} onClick={()=>changePage(page+1)} aria-label="Next page" data-testid="button-page-next"><ChevronRight size={15}/></button></div></footer>
         </section>
       </section>
       <aside className="edm-properties panel">
         <div className="edm-panel-head"><span>Properties</span><span className="edm-counter">{selected?'EDIT':''}</span></div>
+        <details className="edm-field-guide">
+          <summary>What do these fields mean?</summary>
+          <dl>{ENGINEERING_FIELDS.map((field)=><div key={field}><dt>{FIELD_LABELS[field]}</dt><dd>{FIELD_HELP[field]}</dd></div>)}</dl>
+        </details>
         {selected && <label className="edm-record-type">Object type<select value={selected.type} aria-label="Selected record type" disabled={!!initial.error} onChange={(event)=>changeRows(rows.map((row)=>row.id===selected.id?{...row,type:event.target.value as EngineeringRow['type']}:row))}>{OBJECT_TYPES.map((type)=><option key={type}>{type}</option>)}</select></label>}
-        {selected?<><div className="edm-property-summary"><span className="edm-property-icon">{selected.type==='Equipment'?'EQ':selected.type==='Pipe Run'?'PR':selected.type==='OPC'?'OP':selected.type==='Valve'?'VL':'IN'}</span><div><strong data-testid="text-selected-tag">{selected.itemTag}</strong><small>{selected.type} · {drawing.revision}</small></div></div><div className="edm-property-scroll"><div className="edm-property-group">IDENTIFICATION</div>{(['itemTag','tagPrefix','tagSequence','tagSuffix','equipmentClass','equipmentType','equipmentName','drawingRef'] as EngineeringField[]).map((field)=><label className="edm-property-field" key={field}><span>{FIELD_LABELS[field]}</span><input value={selected[field]} onChange={(e)=>patchRow(selected.id,field,e.target.value)} data-testid={`property-${field}`}/></label>)}<div className="edm-property-group">PROCESS & CONNECTION</div>{(['nominalDiameter','pipingMaterial','flow','heatTracing','insulation','opcDrawing','connection','description'] as EngineeringField[]).map((field)=><label className="edm-property-field" key={field}><span>{FIELD_LABELS[field]}</span><input value={selected[field]} onChange={(e)=>patchRow(selected.id,field,e.target.value)} data-testid={`property-${field}`}/></label>)}</div><div className="edm-save-state" role="status" data-testid="status-local-save"><span/> Edits save automatically in this browser</div></>:<div className="edm-empty">Select a graphic or table row to inspect properties.</div>}
+        {selected?<><div className="edm-property-summary"><span className="edm-property-icon">{typeAbbreviation(selected.type)}</span><div><strong data-testid="text-selected-tag">{selected.itemTag}</strong><small>{selected.type} · {drawing.revision}</small></div></div>
+          {(selected.sourcePdfId ?? drawing.sourcePdfId) && <Link
+            className="btn subtle edm-source-locate"
+            href={`/workspace/${discipline}?pdf=${encodeURIComponent(selected.sourcePdfId ?? drawing.sourcePdfId ?? '')}&page=${encodeURIComponent(String(selected.sourceLocations?.[0]?.pageNumber ?? selected.sourcePage ?? '1'))}&record=${encodeURIComponent(selected.id)}#pdf-workflow-title`}
+            data-testid="link-selected-source-location"
+          >
+            <FileText size={13}/> Locate on source PDF
+            <small>{selected.sourceLocations?.length
+              ? `${selected.sourceLocations.length} OCR location(s) · review required`
+              : `Page ${selected.sourcePage || '1'} · no exact position saved`}</small>
+          </Link>}
+          <div className="edm-property-scroll"><div className="edm-property-group">IDENTIFICATION</div>{(['itemTag','tagPrefix','tagSequence','tagSuffix','equipmentClass','equipmentType','equipmentName','drawingRef'] as EngineeringField[]).map((field)=><label className="edm-property-field" key={field}><span title={FIELD_HELP[field]}>{FIELD_LABELS[field]}</span><input value={selected[field]} onChange={(e)=>patchRow(selected.id,field,e.target.value)} data-testid={`property-${field}`}/></label>)}<div className="edm-property-group">PROCESS & CONNECTION</div>{(['nominalDiameter','pipingMaterial','lineSpec','flow','heatTracing','insulation','opcDrawing','connection','description'] as EngineeringField[]).map((field)=><label className="edm-property-field" key={field}><span title={FIELD_HELP[field]}>{FIELD_LABELS[field]}</span><input value={selected[field]} onChange={(e)=>patchRow(selected.id,field,e.target.value)} data-testid={`property-${field}`}/></label>)}</div><div className="edm-save-state" role="status" data-testid="status-local-save"><span/> Edits save automatically in this browser</div></>:<div className="edm-empty">Select a graphic or table row to inspect properties.</div>}
       </aside>
     </div>
     <footer className="edm-footnote"><span>© 2026 gaurav.cbiindia · DEVICE-LOCAL DATA</span><span>{rows.length} records · {drawing.name} · {discipline.toUpperCase()}-isolated browser storage</span></footer>
