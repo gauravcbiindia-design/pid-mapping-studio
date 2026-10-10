@@ -51,7 +51,11 @@ export function DisciplineChooser() {
           <span><strong>Stored in this browser only.</strong> Nothing is uploaded or shared.</span>
         </div>
       </section>
-      <footer className="chooser-footer"><span>LOCAL-FIRST ENGINEERING WORKSPACE</span><span>PDF and DWG files stay in this browser</span></footer>
+      <footer className="chooser-footer">
+        <span>LOCAL-FIRST ENGINEERING WORKSPACE</span>
+        <span>PDFs and project data stay in this browser</span>
+        <span>© 2026 gaurav.cbiindia</span>
+      </footer>
     </main>
   );
 }
