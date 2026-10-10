@@ -1,0 +1,13 @@
+{
+  "name": "pid-mapping-studio",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/run-local-web.mjs",
+    "build": "pnpm --filter @workspace/pid-mapping-studio run build",
+    "typecheck": "pnpm --filter @workspace/pid-mapping-studio run typecheck"
+  }
+}

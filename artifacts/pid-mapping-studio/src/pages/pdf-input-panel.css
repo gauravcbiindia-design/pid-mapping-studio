@@ -1,0 +1,35 @@
+.pdf-meter { height: 6px; border-radius: 4px; background: #e6e8e0; overflow: hidden; margin-top: 6px; }
+.pdf-meter > span { display: block; height: 100%; background: #3f8079; transition: width .2s; }
+.pdf-storage-line { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--app-font-mono); color: #6f7f79; margin: 10px 0 0; flex-wrap: wrap; }
+.pdf-progress { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #d6e0d6; border-radius: 4px; background: #f1f5ee; font-size: 10px; color: #55695f; }
+.pdf-progress-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pdf-notes { margin: 0 0 10px; padding: 0; list-style: none; display: grid; gap: 6px; }
+.pdf-notes li { display: flex; gap: 8px; padding: 8px 10px; border: 1px solid #e6c8b8; border-radius: 4px; background: #faf0ea; color: #8b5140; font-size: 10px; line-height: 1.45; }
+.pdf-notes li.info { border-color: #d6e0d6; background: #f1f5ee; color: #55695f; }
+.pdf-notes button { margin-left: auto; border: 0; background: transparent; color: inherit; }
+.pdf-file-row.is-selected { background: #eaf2ee; }
+.pdf-file-row .pdf-select { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; background: transparent; border: 0; padding: 0; text-align: left; color: inherit; }
+.pdf-row-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.pdf-icon-btn { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #657a72; text-decoration: none; }
+.pdf-icon-btn:hover { background: #e4ece6; border-color: #cddbd0; }
+.pdf-icon-btn.danger:hover { background: #f9eee9; border-color: #e8c9bf; color: #a45142; }
+.pdf-confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 9px 12px; background: #faf0ea; border-bottom: 1px solid #e6c8b8; color: #8b5140; font-size: 10px; }
+.pdf-confirm .btn { min-height: 32px; }
+.pdf-source-box { margin-top: 13px; border: 1px solid #e0e3db; border-radius: 4px; background: #f8f7f1; padding: 12px; }
+.pdf-page-select { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 10px; color: #6f7f79; flex-wrap: wrap; }
+.pdf-page-select select, .pdf-page-select input { min-height: 34px; border: 1px solid #cbd2cd; border-radius: 4px; background: #fff; padding: 0 8px; }
+.ppv-bar { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font: 10px var(--app-font-mono); color: #5f736c; }
+.ppv-label { color: #8a6843; font-weight: 600; }
+.ppv-nav { display: flex; align-items: center; gap: 8px; }
+.ppv-btn { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #cbd2cd; border-radius: 4px; background: #fbfaf6; color: #3a5550; }
+.ppv-btn:disabled { opacity: .45; }
+.ppv-stage { position: relative; min-height: 220px; border: 1px solid #d5dad1; background: #e9ebe4; overflow: hidden; }
+.ppv-stage canvas { display: block; max-width: 100%; background: #fff; }
+.ppv-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: #5f736c; }
+.ppv-error { color: #8b5140; flex-direction: column; }
+.pdf-final-status { margin-top: 13px; padding: 12px; border: 1px solid #e8d3ad; border-radius: 4px; background: #f7edda; color: #655238; font-size: 11px; line-height: 1.55; }
+.pdf-final-status strong { color: #644b2c; }
+@media (max-width: 600px) {
+  .pdf-file-row { flex-wrap: wrap; }
+  .pdf-row-actions { width: 100%; justify-content: flex-start; }
+}
