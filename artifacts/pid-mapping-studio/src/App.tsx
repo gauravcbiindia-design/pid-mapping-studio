@@ -772,10 +772,13 @@ function MappedGraphic({
 }
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const singleComputerMode = import.meta.env.VITE_SINGLE_COMPUTER_MODE === 'true';
+const clerkPubKey = singleComputerMode
+  ? undefined
+  : publishableKeyFromHost(
+      window.location.hostname,
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+    );
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 
 function stripBase(path: string) {
@@ -784,7 +787,7 @@ function stripBase(path: string) {
     : path;
 }
 
-if (!clerkPubKey) {
+if (!clerkPubKey && !singleComputerMode) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY for secure sign-in.');
 }
 
@@ -923,6 +926,26 @@ function AppRoutes() {
   );
 }
 
+function SingleComputerRoutes() {
+  const [location] = useLocation();
+
+  if (location === '/admin/library' || location.startsWith('/sign-in') || location.startsWith('/sign-up')) {
+    return <Redirect to="/" />;
+  }
+  if (location === '/portal' || location === '/library' || location === '/') {
+    return <DisciplineChooser />;
+  }
+  if (location === '/workspace/pfd') return <DisciplineWorkspace discipline="pfd" />;
+  if (location === '/workspace/pid') return <DisciplineWorkspace discipline="pid" />;
+  if (location === '/workspace/pfd/engineering-data') {
+    return <EngineeringDataManager discipline="pfd" />;
+  }
+  if (location === '/workspace/pid/engineering-data') {
+    return <EngineeringDataManager discipline="pid" />;
+  }
+  return <WorkspaceNotFound />;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
   return (
@@ -949,7 +972,13 @@ function ClerkProviderWithRoutes() {
 function App() {
   return (
     <Router base={basePath}>
-      <ClerkProviderWithRoutes />
+      {singleComputerMode ? (
+        <ErrorBoundary>
+          <SingleComputerRoutes />
+        </ErrorBoundary>
+      ) : (
+        <ClerkProviderWithRoutes />
+      )}
     </Router>
   );
 }
