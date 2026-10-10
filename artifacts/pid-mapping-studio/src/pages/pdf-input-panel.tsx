@@ -21,8 +21,11 @@ function fmt(bytes: number): string {
   return `${(bytes / MB).toFixed(1)} MB`;
 }
 function looksPdf(file: File): boolean {
-  const t = file.type.trim().toLowerCase();
-  return t === 'application/pdf' || (t === '' && file.name.toLowerCase().endsWith('.pdf'));
+  const mediaType = file.type.split(';', 1)[0].trim().toLowerCase();
+  const hasPdfExtension = file.name.trim().toLowerCase().endsWith('.pdf');
+  // Mobile file providers can label a real PDF as application/octet-stream.
+  // validatePdf parses the file bytes before anything is saved.
+  return mediaType === 'application/pdf' || hasPdfExtension;
 }
 
 async function validatePdf(bytes: ArrayBuffer): Promise<number> {
