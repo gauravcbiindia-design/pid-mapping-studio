@@ -98,7 +98,7 @@ function normalizeDrawings(value: unknown): EngineeringDrawing[] {
           ...row,
           sourcePage: typeof row.sourcePage === 'string' ? row.sourcePage : '',
           lineSpec: typeof row.lineSpec === 'string' ? row.lineSpec : '',
-          sourceLocations: Array.isArray(row.sourceLocations) ? row.sourceLocations : row.sourceLocations,
+          ...(row.sourceLocations === undefined ? {} : { sourceLocations: row.sourceLocations }),
           reviewStatus: row.reviewStatus === 'Needs review' || row.reviewStatus === 'Reviewed' ? row.reviewStatus : 'Manual',
         };
       }),
