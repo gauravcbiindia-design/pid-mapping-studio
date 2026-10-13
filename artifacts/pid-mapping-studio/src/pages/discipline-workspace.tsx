@@ -123,11 +123,11 @@ export default function DisciplineWorkspace({ discipline }: { discipline: Discip
   };
 
   return (
-    <main className="hierarchy-page">
+    <main className="hierarchy-page" data-discipline={discipline}>
       <header className="hierarchy-topbar">
         <Link href="/" className="studio-wordmark" data-testid="link-home"><span className="wordmark-icon">PM</span> Mapping Studio</Link>
         <div className="hierarchy-top-actions">
-          <span className="local-chip"><span className="local-dot" />Browser-local · not shared</span>
+          <span className="local-chip"><span className="local-dot" />Saved on this device</span>
           <Link href="/" className="btn subtle" data-testid="link-discipline-selection"><ArrowLeft size={14} /> Disciplines</Link>
         </div>
       </header>
@@ -136,12 +136,12 @@ export default function DisciplineWorkspace({ discipline }: { discipline: Discip
           <div className="sidebar-label">DISCIPLINES</div>
           <Link href="/workspace/pfd" className={`discipline-nav ${discipline === 'pfd' ? 'active' : ''}`} data-testid="nav-pfd"><GitBranch size={16} /> PFD</Link>
           <Link href="/workspace/pid" className={`discipline-nav ${discipline === 'pid' ? 'active' : ''}`} data-testid="nav-pid"><Layers size={16} /> P&amp;ID</Link>
-          <div className="sidebar-local-note"><HardDrive size={14} /><span>Groups are saved on this device only.</span></div>
+          <div className="sidebar-local-note"><HardDrive size={14} /><span>PFD and P&amp;ID groups stay separate.</span></div>
         </aside>
         <section className="hierarchy-main" aria-label={`${title} workspace`}>
           <div className="hierarchy-heading">
             <div>
-              <div className="eyebrow">Discipline workspace / browser-local</div>
+              <div className="eyebrow">{title} workspace</div>
               <h1>{title}</h1>
                 <p>Keep {title} groups separate and review source files before adding engineering records.</p>
             </div>

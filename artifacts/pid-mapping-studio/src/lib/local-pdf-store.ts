@@ -16,12 +16,19 @@ export type PdfMeta = {
   autocadStatus?: 'not-connected' | 'waiting' | 'processing' | 'complete' | 'failed';
 };
 
+export type PdfExtractedPageText = {
+  pageNumber: number;
+  searchableText: string;
+  ocrTiles: string[];
+};
+
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
 
 const DB_NAME = 'pid-studio-local-pdfs';
 const META = 'meta';
 const BYTES = 'bytes';
+const EXTRACTED_TEXT = 'extractedText';
 
 export class StoreError extends Error {
   code: 'too-large' | 'total-limit' | 'duplicate' | 'cancelled' | 'storage';
@@ -41,11 +48,14 @@ function openDb(): Promise<IDBDatabase> {
         reject(new StoreError('storage', 'This browser does not allow local file storage.'));
         return;
       }
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => {
+      const req = indexedDB.open(DB_NAME, 2);
+      req.onupgradeneeded = (event) => {
         const db = req.result;
-        db.createObjectStore(META, { keyPath: 'id' }).createIndex('discipline', 'discipline');
-        db.createObjectStore(BYTES);
+        if (event.oldVersion < 1) {
+          db.createObjectStore(META, { keyPath: 'id' }).createIndex('discipline', 'discipline');
+          db.createObjectStore(BYTES);
+        }
+        if (event.oldVersion < 2) db.createObjectStore(EXTRACTED_TEXT);
       };
       req.onsuccess = () => {
         req.result.onversionchange = () => { req.result.close(); dbPromise = null; };
@@ -155,6 +165,33 @@ export async function getPdfBytes(id: string): Promise<ArrayBuffer> {
   return bytes;
 }
 
+/** Keeps complete searchable text and OCR output in IndexedDB, separate from the compact EDE rows. */
+export function savePdfExtractedText(id: string, pages: PdfExtractedPageText[]): Promise<void> {
+  return serial(async () => {
+    const db = await openDb();
+    const tx = db.transaction(EXTRACTED_TEXT, 'readwrite');
+    const done = txDone(tx);
+    tx.objectStore(EXTRACTED_TEXT).put({
+      pdfId: id,
+      pages,
+      savedAt: Date.now(),
+    }, id);
+    try {
+      await done;
+    } catch {
+      throw new StoreError('storage', 'PDF text was read, but the browser could not save the full text index. The original PDF remains saved; free browser storage and retry EDE.');
+    }
+  });
+}
+
+export async function getPdfExtractedText(id: string): Promise<PdfExtractedPageText[]> {
+  const db = await openDb();
+  const record = await reqDone(db.transaction(EXTRACTED_TEXT).objectStore(EXTRACTED_TEXT).get(id)) as
+    { pdfId?: string; pages?: PdfExtractedPageText[] } | undefined;
+  if (!record || record.pdfId !== id || !Array.isArray(record.pages)) return [];
+  return record.pages;
+}
+
 export function updatePdfMeta(id: string, patch: Partial<Omit<PdfMeta, 'id' | 'discipline' | 'aliasNumber' | 'alias' | 'size' | 'pageCount' | 'hash' | 'addedAt'>>): Promise<PdfMeta> {
   return serial(async () => {
     const db = await openDb();
@@ -176,8 +213,12 @@ export function updatePdfMeta(id: string, patch: Partial<Omit<PdfMeta, 'id' | 'd
 export function deletePdfs(ids: string[]): Promise<void> {
   return serial(async () => {
     const db = await openDb();
-    const tx = db.transaction([META, BYTES], 'readwrite');
-    ids.forEach((id) => { tx.objectStore(META).delete(id); tx.objectStore(BYTES).delete(id); });
+    const tx = db.transaction([META, BYTES, EXTRACTED_TEXT], 'readwrite');
+    ids.forEach((id) => {
+      tx.objectStore(META).delete(id);
+      tx.objectStore(BYTES).delete(id);
+      tx.objectStore(EXTRACTED_TEXT).delete(id);
+    });
     await txDone(tx);
   });
 }

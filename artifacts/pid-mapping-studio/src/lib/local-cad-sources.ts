@@ -20,14 +20,26 @@ export type NewLocalCadSource = LocalCadSource & {
   content: Uint8Array;
 };
 
+export type LocalCadBlockAsset = {
+  id: string;
+  sourceId: string;
+  blockName: string;
+  content: Uint8Array;
+};
+
 type StoredCadSource = LocalCadSource & {
   content: ArrayBuffer;
   createdAt: string;
 };
 
+type StoredCadBlockAsset = Omit<LocalCadBlockAsset, 'content'> & {
+  content: ArrayBuffer;
+};
+
 const DATABASE_NAME = 'pid-mapping-studio-local-cad-library';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const STORE_NAME = 'source-drawings';
+const BLOCK_ASSET_STORE_NAME = 'extracted-block-assets';
 
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') {
@@ -39,6 +51,9 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
         database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+      if (!database.objectStoreNames.contains(BLOCK_ASSET_STORE_NAME)) {
+        database.createObjectStore(BLOCK_ASSET_STORE_NAME, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -63,6 +78,71 @@ export async function listLocalCadSources(): Promise<LocalCadSource[]> {
           .sort((left, right) => left.label.localeCompare(right.label)));
       };
       request.onerror = () => reject(request.error ?? new Error('The local drawing library could not be read.'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function getLocalCadSourceContent(id: string): Promise<Uint8Array> {
+  const database = await openDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(id);
+      request.onsuccess = () => {
+        const source = request.result as StoredCadSource | undefined;
+        if (!source) {
+          reject(new Error('An approved mapping refers to a source DWG that is no longer in the local library.'));
+          return;
+        }
+        resolve(new Uint8Array(source.content));
+      };
+      request.onerror = () => reject(request.error ?? new Error('The local source drawing could not be read.'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function saveLocalCadBlockAssets(assets: LocalCadBlockAsset[]): Promise<void> {
+  if (!assets.length) return;
+  const database = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(BLOCK_ASSET_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(BLOCK_ASSET_STORE_NAME);
+      for (const asset of assets) {
+        store.put({
+          id: asset.id,
+          sourceId: asset.sourceId,
+          blockName: asset.blockName,
+          content: asset.content.slice().buffer,
+        } satisfies StoredCadBlockAsset);
+      }
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Extracted symbol blocks could not be saved locally.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Saving extracted symbol blocks was cancelled.'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function getLocalCadBlockAsset(id: string): Promise<Uint8Array> {
+  const database = await openDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = database.transaction(BLOCK_ASSET_STORE_NAME, 'readonly')
+        .objectStore(BLOCK_ASSET_STORE_NAME).get(id);
+      request.onsuccess = () => {
+        const asset = request.result as StoredCadBlockAsset | undefined;
+        if (!asset) {
+          reject(new Error('An approved symbol block is missing from this browser’s local CAD library. Re-import its extraction package.'));
+          return;
+        }
+        resolve(new Uint8Array(asset.content));
+      };
+      request.onerror = () => reject(request.error ?? new Error('The approved symbol block could not be read locally.'));
     });
   } finally {
     database.close();

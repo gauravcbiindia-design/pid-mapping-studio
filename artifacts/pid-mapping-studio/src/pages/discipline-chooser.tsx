@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { ArrowRight, ChevronDown, HardDrive } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 
-export function DisciplineChooser() {
+export function DisciplineChooser({ showLocalChip = true }: { showLocalChip?: boolean }) {
   const [discipline, setDiscipline] = useState<'' | 'pfd' | 'pid'>('');
   const [, setLocation] = useLocation();
 
@@ -16,7 +16,7 @@ export function DisciplineChooser() {
     <main className="chooser-page">
       <header className="chooser-top">
         <Link href="/" className="studio-wordmark" aria-label="Mapping Studio home" data-testid="link-home"><span className="wordmark-icon">PM</span> Mapping Studio</Link>
-        <span className="local-chip"><span className="local-dot" />Browser-local workspace</span>
+        {showLocalChip && <span className="local-chip"><span className="local-dot" />Browser-local workspace</span>}
       </header>
       <section className="chooser-content" aria-labelledby="chooser-title">
         <div className="chooser-intro">

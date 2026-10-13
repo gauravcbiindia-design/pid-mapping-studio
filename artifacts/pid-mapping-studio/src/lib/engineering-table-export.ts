@@ -1,11 +1,11 @@
-import { FIELD_LABELS, serializeEngineeringCsv } from './engineering-data';
-import type { EngineeringField, EngineeringRow } from './engineering-data';
+import { FIELD_LABELS, getEngineeringTableValue, serializeEngineeringCsv } from './engineering-data';
+import type { EngineeringTableField, EngineeringRow } from './engineering-data';
 
 /** A snapshot of the displayed table, without selection inputs or pagination. */
 export type EngineeringTableView = {
-  fields: readonly EngineeringField[];
+  fields: readonly EngineeringTableField[];
   rows: readonly EngineeringRow[];
-  groups: readonly EngineeringField[];
+  groups: readonly EngineeringTableField[];
 };
 export type EngineeringExportContext = {
   discipline: string;
@@ -19,7 +19,7 @@ export type EngineeringExportContext = {
 export function engineeringTableValues(view: EngineeringTableView) {
   return {
     headers: ['#', 'Object type', ...view.fields.map((field) => FIELD_LABELS[field])],
-    rows: view.rows.map((row, index) => [index + 1, row.type, ...view.fields.map((field) => row[field])]),
+    rows: view.rows.map((row, index) => [index + 1, row.type, ...view.fields.map((field) => getEngineeringTableValue(row, field))]),
   };
 }
 
@@ -27,7 +27,7 @@ export function engineeringGroupSummary(view: EngineeringTableView) {
   return view.groups.map((field) => {
     const counts = new Map<string, number>();
     for (const row of view.rows) {
-      const value = row[field] || '—';
+      const value = getEngineeringTableValue(row, field) || '—';
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
     return { field, label: FIELD_LABELS[field], values: [...counts].map(([value, count]) => ({ value, count })) };
@@ -89,7 +89,7 @@ export async function engineeringViewExcel(view: EngineeringTableView, context: 
   });
   sheet.columns.forEach((column, index) => {
     const field = view.fields[index - 2];
-    column.width = index === 0 ? 7 : index === 1 ? 18 : field === 'description' || field === 'connection' ? 38 : Math.max(18, table.headers[index].length + 3);
+    column.width = index === 0 ? 7 : index === 1 ? 18 : field === 'notes' ? 52 : field === 'description' || field === 'connection' ? 38 : Math.max(18, table.headers[index].length + 3);
   });
   sheet.views = [{ state: 'frozen', ySplit: header.number, xSplit: 2 }];
   sheet.autoFilter = { from: { row: header.number, column: 1 }, to: { row: header.number + table.rows.length, column: width } };

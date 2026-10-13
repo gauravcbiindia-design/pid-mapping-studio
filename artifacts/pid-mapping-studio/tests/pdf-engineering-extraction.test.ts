@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { extractTagCandidates, getOcrTileStarts, joinPdfTextItems } from '../src/lib/pdf-engineering-extraction';
+import {
+  extractPdfNoteCandidates, extractTagCandidates, getOcrTileStarts, joinPdfTextItems,
+} from '../src/lib/pdf-engineering-extraction';
 
 test('detects equipment, instrument, valve, and multi-part line tag candidates', () => {
   const tags = extractTagCandidates(
@@ -46,6 +48,27 @@ test('creates a separate Line Spec record only when the PDF labels a specificati
   assert.deepEqual(specs.map(({ tag, type, lineSpec }) => ({ tag, type, lineSpec })), [
     { tag: 'A21PB', type: 'Line Spec', lineSpec: 'A21PB' },
   ]);
+});
+
+test('extracts numbered drawing notes as page-linked Item Note candidates and deduplicates OCR copies', () => {
+  const notes = extractPdfNoteCandidates([{
+    pageNumber: 4,
+    searchableText: [
+      'GENERAL NOTES',
+      '1. Verify the equipment connection before issuing this drawing.',
+      '2. Keep all existing line identifiers unchanged during the revision.',
+      'LEGEND',
+      'P-101 Pump',
+    ].join('\n'),
+    ocrTiles: ['GENERAL NOTES\n1. Verify the equipment connection before issuing this drawing.'],
+  }]);
+
+  assert.equal(notes.length, 2);
+  assert.deepEqual(notes.map(({ tag, type, pageNumber }) => ({ tag, type, pageNumber })), [
+    { tag: 'NOTE-P4-1', type: 'Item Note', pageNumber: 4 },
+    { tag: 'NOTE-P4-2', type: 'Item Note', pageNumber: 4 },
+  ]);
+  assert.match(notes[0].description ?? '', /Verify the equipment connection/);
 });
 
 test('rejoins adjacent PDF text fragments so split CAD tag characters are not lost', () => {

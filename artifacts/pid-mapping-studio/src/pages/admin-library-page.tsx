@@ -188,7 +188,7 @@ export default function AdminLibraryPage() {
       setAssets([]);
       setAudit([]);
       setProjects([]);
-      setError(cause instanceof Error ? cause.message : "Company library could not be loaded.");
+      setError(cause instanceof Error ? cause.message : "Legends Library could not be loaded.");
     }
   }
 
@@ -304,8 +304,8 @@ export default function AdminLibraryPage() {
           </div>
           <h1 className="mt-5 text-2xl font-bold tracking-tight text-slate-900">Admin access needed</h1>
           <p className="mt-3 leading-7 text-slate-600">
-            This area holds private company standards. Your account does not have access yet.
-            The company owner must approve your verified company email.
+            This area holds the private Legends Library. Your account does not have access yet.
+            The Legends Library owner must approve your verified account email.
           </p>
           {error && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
           <div className="mt-7 flex flex-wrap gap-3">
@@ -354,9 +354,9 @@ export default function AdminLibraryPage() {
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-teal-800">
               <ShieldCheck className="h-4 w-4" /> Admin-only data
             </div>
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Company and project standards</h2>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Legends Library and project standards</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Company standards stay private. Project rules only affect the selected project.
+              The Legends Library stays private. Project rules only affect the selected project.
               New library items need an admin’s approval before they are treated as standard.
             </p>
           </div>
@@ -398,7 +398,7 @@ export default function AdminLibraryPage() {
             <div className="flex flex-col gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-teal-800">
-                  <Layers3 className="h-4 w-4" /> Company library
+                  <Layers3 className="h-4 w-4" /> Legends Library
                 </div>
                 <p className="mt-1 text-sm text-slate-500">{symbols.length} items · {symbols.filter((item) => item.status === "approved").length} approved</p>
               </div>
@@ -684,7 +684,7 @@ export default function AdminLibraryPage() {
                 <div className="flex items-center gap-2 text-sm font-semibold text-teal-800">
                   <Users className="h-4 w-4" /> Approved admins
                 </div>
-                <p className="mt-1 text-sm text-slate-500">Only add a verified account you trust with company standards.</p>
+                <p className="mt-1 text-sm text-slate-500">Only add a verified account you trust with the Legends Library.</p>
                 <form
                   className="mt-4 flex gap-2"
                   onSubmit={(event) => {

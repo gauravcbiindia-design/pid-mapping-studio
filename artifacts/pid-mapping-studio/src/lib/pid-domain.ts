@@ -140,7 +140,7 @@ export function createDemoMapping(): DrawingMapping {
         linetype: 'CONTINUOUS',
         lineweight: 25,
         verified: false,
-        verificationNote: 'Demonstration layer only; company standards were not supplied.',
+        verificationNote: 'Demonstration layer only; Legends Library settings were not supplied.',
       },
       {
         id: 'layer-equipment',
@@ -150,7 +150,7 @@ export function createDemoMapping(): DrawingMapping {
         linetype: 'CONTINUOUS',
         lineweight: 25,
         verified: false,
-        verificationNote: 'Demonstration layer only; company standards were not supplied.',
+        verificationNote: 'Demonstration layer only; Legends Library settings were not supplied.',
       },
       {
         id: 'layer-valve',
@@ -160,7 +160,7 @@ export function createDemoMapping(): DrawingMapping {
         linetype: 'CONTINUOUS',
         lineweight: 25,
         verified: false,
-        verificationNote: 'Demonstration layer only; company standards were not supplied.',
+        verificationNote: 'Demonstration layer only; Legends Library settings were not supplied.',
       },
       {
         id: 'layer-instrument',
@@ -170,7 +170,7 @@ export function createDemoMapping(): DrawingMapping {
         linetype: 'CONTINUOUS',
         lineweight: 18,
         verified: false,
-        verificationNote: 'Demonstration layer only; company standards were not supplied.',
+        verificationNote: 'Demonstration layer only; Legends Library settings were not supplied.',
       },
       {
         id: 'layer-text',
@@ -180,7 +180,7 @@ export function createDemoMapping(): DrawingMapping {
         linetype: 'CONTINUOUS',
         lineweight: 13,
         verified: false,
-        verificationNote: 'Demonstration layer only; company standards were not supplied.',
+        verificationNote: 'Demonstration layer only; Legends Library settings were not supplied.',
       },
     ],
     entities: [

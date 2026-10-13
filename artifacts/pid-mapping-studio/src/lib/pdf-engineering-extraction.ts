@@ -1,4 +1,5 @@
 import type { EngineeringRow, PdfTagCandidate } from '@/lib/engineering-data';
+import type { PdfExtractedPageText } from './local-pdf-store';
 import { PdfExtractionError, type ExtractionStage } from './pdf-extraction-error';
 
 const TAG_PATTERN = /\b(?:[A-Z]{1,8}\s*[-–]\s*)+\d{1,6}[A-Z0-9]*(?:\s*[-–]\s*[A-Z0-9]{1,8}){0,3}\b/g;
@@ -12,6 +13,7 @@ export type PdfExtractionResult = {
   candidates: PdfTagCandidate[];
   pages: number;
   ocrPages: number;
+  pageText: PdfExtractedPageText[];
 };
 export type PositionedPdfText = {
   str: string;
@@ -213,6 +215,110 @@ export function extractTagCandidates(text: string, pageNumber: number): PdfTagCa
   return [...found.values()];
 }
 
+const NOTES_HEADING = /^(?:(?:GENERAL|PROCESS|DESIGN|SAFETY|OPERATING|CONSTRUCTION)\s+)?NOTES?\s*[:.-]?\s*(.*)$/i;
+const NOTES_END_HEADING = /^(?:LEGENDS?|ABBREVIATIONS?|SYMBOLS?|REFERENCES?|REVISION(?:S)?|DRAWING\s+(?:TITLE|NO|NUMBER)|PROJECT|CLIENT|SCALE|TITLE\s*BLOCK|EQUIPMENT\s+LIST|LINE\s+LIST)\b/i;
+const NUMBERED_NOTE = /^(?:(?:NOTE\s*)?\d{1,3}\s*[.)-]\s+|[A-Z]\s*[.)]\s+).+/i;
+const LABELLED_NOTE = /^(?:GENERAL\s+)?NOTE(?:\s+\d+)?\s*[:#-]\s*.+/i;
+
+/** Picks out numbered/labelled drawing notes; the complete page text remains stored separately. */
+export function extractPdfNoteCandidates(pages: readonly PdfExtractedPageText[]): PdfTagCandidate[] {
+  const output: PdfTagCandidate[] = [];
+  for (const page of pages) {
+    const sources = [
+      { text: page.searchableText, label: 'PDF text' },
+      ...page.ocrTiles.map((text) => ({ text, label: 'OCR text' })),
+    ];
+    const seen = new Set<string>();
+    const notes: Array<{ text: string; label: string }> = [];
+
+    for (const source of sources) {
+      let inNotesSection = false;
+      let current = '';
+      const flush = () => {
+        const value = current.replace(/\s+/g, ' ').trim();
+        if (value.length >= 8) {
+          const key = value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            notes.push({ text: value, label: source.label });
+          }
+        }
+        current = '';
+      };
+
+      for (const rawLine of source.text.replace(/\r/g, '\n').split('\n')) {
+        const line = rawLine.replace(/\s+/g, ' ').trim();
+        if (!line) continue;
+        const heading = line.match(NOTES_HEADING);
+        if (heading) {
+          flush();
+          inNotesSection = true;
+          if (heading[1]) current = heading[1].trim();
+          continue;
+        }
+        if (inNotesSection && NOTES_END_HEADING.test(line)) {
+          flush();
+          inNotesSection = false;
+          continue;
+        }
+        if (LABELLED_NOTE.test(line)) {
+          flush();
+          current = line;
+          inNotesSection = true;
+          continue;
+        }
+        if (NUMBERED_NOTE.test(line)) {
+          const likelyNoteText = line.length >= 36 && line.split(/\s+/).length >= 7;
+          if (inNotesSection || likelyNoteText) {
+            flush();
+            current = line;
+            inNotesSection = true;
+          } else {
+            flush();
+          }
+          continue;
+        }
+        if (inNotesSection) {
+          current = current ? `${current} ${line}` : line;
+        } else {
+          flush();
+        }
+      }
+      flush();
+    }
+
+    let noteNumber = 0;
+    for (const note of notes) {
+      // EDE fields are capped at 2,000 characters. Split long notes rather than truncating.
+      const chunks: string[] = [];
+      for (let start = 0; start < note.text.length;) {
+        let end = Math.min(start + 1500, note.text.length);
+        if (end < note.text.length) {
+          const boundary = note.text.lastIndexOf(' ', end);
+          if (boundary > start + 700) end = boundary;
+        }
+        chunks.push(note.text.slice(start, end));
+        start = end;
+      }
+      for (const chunk of chunks) {
+        const value = chunk.trim();
+        if (!value) continue;
+        noteNumber += 1;
+        output.push({
+          tag: `NOTE-P${page.pageNumber}-${noteNumber}`,
+          type: 'Item Note',
+          tagPrefix: 'NOTE',
+          tagSequence: String(noteNumber),
+          tagSuffix: `P${page.pageNumber}`,
+          pageNumber: page.pageNumber,
+          description: `${note.label} note — review against source: ${value}`,
+        });
+      }
+    }
+  }
+  return output;
+}
+
 function mergeCandidates(primary: PdfTagCandidate[], additions: PdfTagCandidate[]) {
   const merged = new Map(primary.map((candidate) => [`${candidate.type}:${candidate.tag.toLowerCase()}`, { ...candidate }]));
   for (const candidate of additions) {
@@ -251,6 +357,7 @@ export async function extractPdfEngineeringTags(
   const pdf = await loading.promise;
   let ocrWorker: Awaited<ReturnType<typeof import('tesseract.js').createWorker>> | null = null;
   const candidatesByKey = new Map<string, PdfTagCandidate>();
+  const pageText: PdfExtractedPageText[] = [];
   let ocrPages = 0;
   let activePage = 1;
   let stage: ExtractionStage = 'PDF text';
@@ -278,6 +385,7 @@ export async function extractPdfEngineeringTags(
         }];
       });
       const embeddedText = joinPdfTextItems(positionedItems);
+      const ocrTiles: string[] = [];
       let pageCandidates = extractTagCandidates(embeddedText, pageNumber);
       const locatedTextCandidates = positionedItems.flatMap((item) => {
         const location = textItemLocation(
@@ -293,7 +401,9 @@ export async function extractPdfEngineeringTags(
       });
       pageCandidates = mergeCandidates(pageCandidates, locatedTextCandidates);
 
-      if (embeddedText.replace(/\s/g, '').length < 120 || pageCandidates.length < 20) {
+      // Tag count is only a weak signal for a complete PDF text layer. OCR sparse
+      // pages more aggressively, while preserving the complete native text on every page.
+      if (embeddedText.replace(/\s/g, '').length < 800 || pageCandidates.length < 20) {
         onProgress?.(pageNumber, pdf.numPages, 'OCR');
         if (!ocrWorker) {
           stage = 'OCR startup';
@@ -334,6 +444,7 @@ export async function extractPdfEngineeringTags(
               tileContext.drawImage(pageCanvas, left, top, width, height, 0, 0, width, height);
               stage = 'OCR reading';
               const result = await ocrWorker.recognize(tileCanvas);
+              ocrTiles.push(result.data.text);
               ocrCandidates.push(...extractTagCandidates(result.data.text, pageNumber));
               ocrCandidates.push(...candidatesFromOcrWords(
                 (result.data as unknown as { words?: OcrWord[] }).words ?? [],
@@ -362,9 +473,10 @@ export async function extractPdfEngineeringTags(
           existing ? mergeCandidates([existing], [candidate])[0] : candidate,
         );
       }
+      pageText.push({ pageNumber, searchableText: embeddedText, ocrTiles });
       page.cleanup();
     }
-    return { candidates: [...candidatesByKey.values()], pages: pdf.numPages, ocrPages };
+    return { candidates: [...candidatesByKey.values()], pages: pdf.numPages, ocrPages, pageText };
   } catch (error) {
     if (!shouldContinue()) throw error;
     throw new PdfExtractionError(activePage, stage, error);

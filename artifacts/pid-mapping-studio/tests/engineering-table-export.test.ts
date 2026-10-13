@@ -33,6 +33,25 @@ test('CSV retains table schema and multiline text while guarding spreadsheet for
   assert.equal(imported.length, 2);
 });
 
+test('Notes are included in the filtered CSV and formatted Excel table', async () => {
+  const row = createEngineeringRow('Item Note', 'NOTE-P1-1', 'PID-001');
+  row.notes = 'Keep the bypass valve accessible.\nConfirm the access route.';
+  const source: EngineeringTableView = { fields: ['itemTag', 'notes'], rows: [row], groups: [] };
+
+  assert.deepEqual(engineeringTableValues(source).headers, ['#', 'Object type', 'Item Tag', 'Notes']);
+  assert.equal(parseEngineeringCsv(engineeringViewCsv(source), 'PID-001')[0].notes, row.notes);
+
+  const bytes = await engineeringViewExcel(source, {
+    discipline: 'P&ID', drawing: 'PID-001', filter: 'Item Note', search: '', sort: 'Notes ascending',
+  });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes.buffer);
+  const sheet = workbook.getWorksheet('Engineering data')!;
+  assert.equal(sheet.getCell('D4').value, 'Notes');
+  assert.equal(sheet.getCell('D5').value, row.notes);
+  assert.equal(sheet.getColumn(4).width, 52);
+});
+
 test('group counts use only the rows in the filtered snapshot', () => {
   const source = view();
   assert.deepEqual(engineeringGroupSummary(source)[0].values, [{ value: 'A1', count: 2 }]);
@@ -57,7 +76,7 @@ test('real XLSX round-trips schema, ordered data, style, filters and grouping', 
   assert.equal(sheet.views[0].state, 'frozen');
   assert.equal(sheet.views[0].ySplit, 5);
   assert.equal(sheet.autoFilter, 'A5:D7');
-  assert.deepEqual(book.getWorksheet('Group summaries')!.getRow(2).values.slice(1), ['Piping Material', 'A1', 2]);
+  assert.deepEqual(book.getWorksheet('Group summaries')!.getRow(2).values.slice(1), ['Piping Material Class', 'A1', 2]);
 });
 
 test('exports include every matching row across table pagination', () => {
@@ -65,4 +84,20 @@ test('exports include every matching row across table pagination', () => {
   const table = engineeringTableValues({ fields: ['itemTag'], rows, groups: [] });
   assert.equal(table.rows.length, 27);
   assert.deepEqual(table.rows[26], [27, 'Equipment', 'P-27']);
+});
+
+test('Stable ID is an explicit text column in table, CSV, and XLSX output', async () => {
+  const row = createEngineeringRow('Equipment', 'P-101', 'PID-001');
+  const view: EngineeringTableView = { fields: ['stableId', 'itemTag'], rows: [row], groups: [] };
+  const table = engineeringTableValues(view);
+  assert.deepEqual(table.headers, ['#', 'Object type', 'Stable ID', 'Item Tag']);
+  assert.equal(table.rows[0][2], row.id);
+  assert.match(engineeringViewCsv(view), /"Stable ID","Item Tag"/);
+
+  const bytes = await engineeringViewExcel(view, {
+    discipline: 'P&ID', drawing: 'PID-001', filter: 'All types', search: '', sort: 'Item Tag ascending',
+  });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes.buffer);
+  assert.equal(workbook.getWorksheet('Engineering data')?.getCell('C5').value, row.id);
 });

@@ -15,8 +15,8 @@ import './standards-library-page.css';
 type Props = {
   library: CadStandardsLibrary;
   reviewCandidates: CadReviewCandidate[];
-  onApproveCompany(candidateId: string): void;
-  onApproveProject(candidateId: string): void;
+  onApproveCompany(candidateId: string, additionalFields?: { label: string; value: string }[]): void;
+  onApproveProject(candidateId: string, additionalFields?: { label: string; value: string }[]): void;
   onDismiss(candidateId: string): void;
   onSetCompanyDefault(purpose: CadPurpose, size: CadSheetSize): void;
   onSetProjectDefault(projectId: string, purpose: CadPurpose, size: CadSheetSize): void;
@@ -70,12 +70,26 @@ export default function StandardsLibraryPage({
   const [activeProjectId, setActiveProjectId] = useState('');
   const [candidatePage, setCandidatePage] = useState(0);
   const [actionMessage, setActionMessage] = useState('');
+  const [fallbackCategories, setFallbackCategories] = useState<Record<string, string>>({});
   const pageSize = 20;
   const projectIds = useMemo(() => Object.keys(library.projects).sort(), [library.projects]);
   const selectedProjectId = projectIds.includes(activeProjectId) ? activeProjectId : (projectIds[0] ?? '');
   const pending = reviewCandidates.filter((candidate) => candidate.status === 'needs-review');
   const approvedCount = reviewCandidates.filter((candidate) => candidate.status === 'approved').length;
   const dismissedCount = reviewCandidates.filter((candidate) => candidate.status === 'dismissed').length;
+  const approveWithCategory = (candidate: CadReviewCandidate, target: 'company' | 'project') => {
+    const fallbackCategory = (fallbackCategories[candidate.id] ??
+      candidate.item.fields.find((field) => field.label === 'Fallback category')?.value ?? '').trim();
+    if (candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg' && !fallbackCategory) {
+      setActionMessage('Enter the real equipment category (such as pump or valve) before approving an extracted block.');
+      return;
+    }
+    setActionMessage('');
+    const fields = candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg'
+      ? [{ label: 'Fallback category', value: fallbackCategory }]
+      : undefined;
+    (target === 'company' ? onApproveCompany : onApproveProject)(candidate.id, fields);
+  };
 
   const filteredCandidates = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -149,7 +163,7 @@ export default function StandardsLibraryPage({
           <div>
             <div className="standards-eyebrow">Standards library <span>/</span> human review</div>
             <h1>Drafting standards</h1>
-            <p>Inspect source-derived CAD values before they become defaults. Project choices stay separate from company standards.</p>
+            <p>Inspect source-derived CAD values before they become defaults. Project choices stay separate from the Legends Library.</p>
           </div>
           <div className="standards-local-seal"><HardDrive size={15} /><span>LOCAL ONLY<small>Nothing is uploaded or shared</small></span></div>
         </section>
@@ -181,18 +195,31 @@ export default function StandardsLibraryPage({
               {visibleCandidates.map((candidate) => (
                 <article className="candidate-card" key={candidate.id} data-testid={`candidate-${candidate.id}`}>
                   <div className="candidate-top">
-                    <div className="candidate-category"><span className="candidate-glyph"><Layers3 size={15} /></span><span><strong>{categoryAlias(candidate.item.category)}</strong><small>{sourceAlias(candidate, reviewCandidates)} · {candidate.proposedScope === 'project' ? 'Project proposal' : candidate.proposedScope === 'company' ? 'Company proposal' : 'Scope not classified'}</small></span></div>
+                    <div className="candidate-category"><span className="candidate-glyph"><Layers3 size={15} /></span><span><strong>{categoryAlias(candidate.item.category)}</strong><small>{sourceAlias(candidate, reviewCandidates)} · {candidate.proposedScope === 'project' ? 'Project proposal' : candidate.proposedScope === 'company' ? 'Legends Library proposal' : 'Scope not classified'}</small></span></div>
                     <span className="candidate-status"><i />Needs review</span>
                   </div>
                   <div className="candidate-fields" aria-label={`${categoryAlias(candidate.item.category)} CAD standard values`}>
                     {candidate.item.fields.map((field, index) => <div className="candidate-field" key={`${field.label}-${index}`}><span>{field.label}</span><strong>{field.value || '—'}</strong></div>)}
                   </div>
+                  {candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg' && (
+                    <label className="candidate-fallback-category">
+                      <span>Fallback category <small>Required for safe same-category substitution</small></span>
+                      <input value={fallbackCategories[candidate.id] ??
+                        candidate.item.fields.find((field) => field.label === 'Fallback category')?.value ?? ''}
+                        onChange={(event) => setFallbackCategories((current) => ({
+                          ...current,
+                          [candidate.id]: event.target.value,
+                        }))}
+                        placeholder="For example: pump, valve, or instrument"
+                        aria-label={`Fallback category for ${candidate.item.name}`} />
+                    </label>
+                  )}
                   <div className="candidate-actions">
-                     <span className="candidate-scope-note">{candidate.proposedScope === 'project' ? 'Approve into isolated project library' : candidate.proposedScope === 'company' ? 'Approve as company standard' : 'Unclassified source · project-only approval'}</span>
+                     <span className="candidate-scope-note">{candidate.proposedScope === 'project' ? 'Approve into isolated project library' : candidate.proposedScope === 'company' ? 'Approve to the Legends Library' : 'Unclassified source · project-only approval'}</span>
                      {candidate.proposedScope === 'company' ? (
-                       <button className="btn primary" onClick={() => onApproveCompany(candidate.id)} disabled={readOnly} data-testid={`button-approve-company-${candidate.id}`}><Check size={14} />Approve company</button>
+                        <button className="btn primary" onClick={() => approveWithCategory(candidate, 'company')} disabled={readOnly} data-testid={`button-approve-company-${candidate.id}`}><Check size={14} />Approve to Legends Library</button>
                      ) : (
-                       <button className="btn primary" onClick={() => onApproveProject(candidate.id)} disabled={readOnly} data-testid={`button-approve-project-${candidate.id}`}><Check size={14} />Approve to project</button>
+                        <button className="btn primary" onClick={() => approveWithCategory(candidate, 'project')} disabled={readOnly} data-testid={`button-approve-project-${candidate.id}`}><Check size={14} />Approve to project</button>
                      )}
                      <button className="btn subtle" onClick={() => onDismiss(candidate.id)} disabled={readOnly} data-testid={`button-dismiss-${candidate.id}`}>Dismiss</button>
                   </div>
@@ -250,26 +277,26 @@ export default function StandardsLibraryPage({
                 })}
               </div>
               {actionMessage && <div className="standards-action-note" role="status">{actionMessage}</div>}
-              <div className="defaults-note"><ShieldCheck size={14} /><span>Project selections change only that project. Company defaults remain unchanged.</span></div>
+              <div className="defaults-note"><ShieldCheck size={14} /><span>Project selections change only that project. Legends Library defaults remain unchanged.</span></div>
             </section>
 
             <section className="library-panel panel">
               <div className="standards-panel-head">
-                <div><span className="standards-kicker">APPROVED STANDARDS</span><h2><Layers3 size={16} />{tab === 'company' ? 'Company library' : 'Project library'}</h2></div>
+                <div><span className="standards-kicker">APPROVED STANDARDS</span><h2><Layers3 size={16} />{tab === 'company' ? 'Legends Library' : 'Project library'}</h2></div>
                 <span className="standards-count">{visibleItems.length}</span>
               </div>
               <div className="approved-list">
                 {visibleItems.map((item) => <article className="approved-item" key={item.id}>
-                  <div className="approved-item-head"><span className="approved-glyph"><Check size={13} /></span><div><strong>{categoryAlias(item.category)}</strong><small>{tab === 'company' ? 'Company standard' : `${projectAlias(selectedProjectId, projectIds)} · project-only`}</small></div></div>
+                  <div className="approved-item-head"><span className="approved-glyph"><Check size={13} /></span><div><strong>{categoryAlias(item.category)}</strong><small>{tab === 'company' ? 'Legends Library standard' : `${projectAlias(selectedProjectId, projectIds)} · project-only`}</small></div></div>
                   <div className="approved-fields">{item.fields.map((field, index) => <div key={`${field.label}-${index}`}><span>{field.label}</span><strong>{field.value || '—'}</strong></div>)}</div>
                 </article>)}
-                {!visibleItems.length && <div className="approved-empty"><span className="empty-seal"><Layers3 size={18} /></span><strong>{tab === 'company' ? 'No approved company standards' : 'No standards in this project'}</strong><small>{tab === 'company' ? 'Review and approve source mappings to build the company library.' : 'Project-approved standards remain isolated from company defaults.'}</small></div>}
+                {!visibleItems.length && <div className="approved-empty"><span className="empty-seal"><Layers3 size={18} /></span><strong>{tab === 'company' ? 'No approved Legends Library standards' : 'No standards in this project'}</strong><small>{tab === 'company' ? 'Review and approve source mappings to build the Legends Library.' : 'Project-approved standards remain isolated from Legends Library defaults.'}</small></div>}
               </div>
               <footer className="library-foot"><span>Visible values are standards fields</span><span>Descriptions hidden</span></footer>
             </section>
           </aside>
         </div>
-        <footer className="standards-page-foot"><span>LOCAL-FIRST ENGINEERING WORKSPACE</span><span>Company and project standards are reviewed separately</span></footer>
+        <footer className="standards-page-foot"><span>LOCAL-FIRST ENGINEERING WORKSPACE</span><span>Legends Library and project standards are reviewed separately</span></footer>
       </div>
     </main>
   );

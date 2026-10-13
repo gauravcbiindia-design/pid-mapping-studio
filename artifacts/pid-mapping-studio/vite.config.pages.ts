@@ -10,6 +10,9 @@ if (!basePath.startsWith('/') || !basePath.endsWith('/')) {
 
 export default defineConfig({
   base: basePath,
+  define: {
+    'import.meta.env.VITE_SINGLE_COMPUTER_MODE': JSON.stringify('true'),
+  },
   plugins: [react(), tailwindcss({ optimize: false })],
   resolve: {
     alias: {

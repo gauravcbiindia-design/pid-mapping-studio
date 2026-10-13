@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
-  AlertTriangle, Download, FilePlus2, FileText, HardDrive, Loader2, Trash2, X, Eye, Monitor, RefreshCw,
+  AlertTriangle, Download, FilePlus2, FileText, HardDrive, Loader2, Trash2, X, Eye, Monitor, RefreshCw, Wrench,
 } from 'lucide-react';
 import PdfPagePreview from '@/components/pdf-page-preview';
 import {
   MAX_FILE_BYTES, MAX_TOTAL_BYTES, StoreError, clearDiscipline, deletePdfs, getPdfBytes,
-  listPdfs, savePdf, sha256Hex, totalStoredBytes, updatePdfMeta, type PdfMeta,
+  listPdfs, savePdf, savePdfExtractedText, sha256Hex, totalStoredBytes, updatePdfMeta, type PdfMeta,
 } from '@/lib/local-pdf-store';
-import { extractPdfEngineeringTags } from '@/lib/pdf-engineering-extraction';
+import { extractPdfEngineeringTags, extractPdfNoteCandidates } from '@/lib/pdf-engineering-extraction';
 import { extractionFailureMessage } from '@/lib/pdf-extraction-error';
 import { getEngineeringDrawings, savePdfExtraction } from '@/lib/engineering-data';
+import { buildAutoCadDwgRunnerPackage } from '@/lib/pdf-dwg-runner';
+import type { ApprovedRunnerStandard, ApprovedRunnerSymbol, RunnerBlockAsset } from '@/lib/pdf-dwg-runner';
+import { getLocalCadBlockAsset } from '@/lib/local-cad-sources';
+import { loadCadStandardsLibrary } from '@/lib/cad-standards';
+import type { CadLibraryItem } from '@/lib/cad-standards';
 import './pdf-input-panel.css';
 
 type Discipline = 'PFD' | 'P&ID';
@@ -28,6 +33,7 @@ type Progress = {
 } | null;
 
 const MB = 1024 * 1024;
+const MAX_RUNNER_BATCH_BYTES = 500 * MB;
 function fmt(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < MB) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -66,6 +72,13 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
   const [sourceRevision, setSourceRevision] = useState(0);
   const [page, setPage] = useState(1);
   const [confirm, setConfirm] = useState<{ type: 'one'; id: string } | { type: 'all' } | null>(null);
+  const [projectId, setProjectId] = useState('');
+  const [projectOptions, setProjectOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [isPreparingRunner, setIsPreparingRunner] = useState(false);
+  const [runnerMessage, setRunnerMessage] = useState('');
+  const [isPreparingDxf, setIsPreparingDxf] = useState(false);
+  const [dxfMessage, setDxfMessage] = useState('');
+  const [dxfScale, setDxfScale] = useState('1');
   const tasksRef = useRef<Task[]>([]);
   const mounted = useRef(true);
   const sourceTargetHandled = useRef(false);
@@ -81,6 +94,18 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
     const id = noteSeq.current;
     setNotes((n) => [...n.slice(-5), { id, kind, text }]);
   }, []);
+
+  useEffect(() => {
+    try {
+      const library = loadCadStandardsLibrary();
+      setProjectOptions(Object.keys(library.projects).sort().map((id, index) => ({
+        id,
+        label: `Project ${String(index + 1).padStart(2, '0')}`,
+      })));
+    } catch (error) {
+      addNote('error', error instanceof Error ? error.message : 'The approved CAD library could not be loaded.');
+    }
+  }, [addNote]);
 
   const refresh = useCallback(async () => {
     try {
@@ -118,22 +143,31 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
       throw error;
     }
     if (!shouldContinue()) throw new StoreError('cancelled', 'EDE extraction paused.');
+    await savePdfExtractedText(meta.id, result.pageText);
+    const noteCandidates = extractPdfNoteCandidates(result.pageText);
     const ede = savePdfExtraction(discipline === 'PFD' ? 'pfd' : 'pid', {
       id: meta.id,
       alias: meta.alias,
-    }, result.candidates);
+    }, [...result.candidates, ...noteCandidates]);
     if (mounted.current) setSourceRevision((revision) => revision + 1);
-    const status = ede.recordCount ? 'needs-review' : 'no-tags';
+    const hasReadableText = result.pageText.some((pageText) =>
+      pageText.searchableText.trim() || pageText.ocrTiles.some((text) => text.trim()),
+    );
+    const status = ede.recordCount || hasReadableText ? 'needs-review' : 'no-tags';
     await updatePdfMeta(meta.id, {
       analysisStatus: status,
       analysisPagesDone: result.pages,
       analysisRecordCount: ede.recordCount,
       analysisMessage: result.ocrPages
-        ? `Read ${result.ocrPages} scanned page(s) with local OCR. Confirm all ${ede.recordCount} candidate(s).`
-        : `Read searchable PDF text. Confirm all ${ede.recordCount} candidate(s).`,
+        ? `Page text and OCR from ${result.ocrPages} page(s) are saved locally. ${result.candidates.length} tag candidate(s) and ${noteCandidates.length} note(s) need review.`
+        : `Page text is saved locally. ${result.candidates.length} tag candidate(s) and ${noteCandidates.length} note(s) need review.`,
       autocadStatus: 'not-connected',
     });
-    return ede;
+    return {
+      ...ede,
+      tagCount: result.candidates.length,
+      noteCount: noteCandidates.length,
+    };
   };
 
   useEffect(() => {
@@ -204,7 +238,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
             ? { ...current, phase: 'extracting', currentAlias: meta.alias, pageNow: pageNumber, pageTotal }
             : current);
         });
-        if (alive()) addNote('info', `${meta.alias}: ${ede.recordCount} tag candidate(s) added to EDE${ede.recordCount ? ' for review' : ' (no tags found)'}. AutoCAD is not connected.`);
+        if (alive()) addNote('info', `${meta.alias}: ${ede.tagCount} tag candidate(s) and ${ede.noteCount} PDF note(s) were added to EDE for review. Full page text is saved locally; AutoCAD is not connected.`);
       } catch (e) {
         const cancelled = e instanceof StoreError && e.code === 'cancelled';
         const message = cancelled ? 'Extraction paused. Resume it from this saved PDF.' : extractionFailureMessage(e);
@@ -270,7 +304,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
           ? { ...current, phase: 'extracting', pageNow: pageNumber, pageTotal }
           : current);
       });
-      addNote('info', `${meta.alias}: ${ede.recordCount} tag candidate(s) added to EDE${ede.recordCount ? ' for review' : ' (no tags found)'}. AutoCAD is not connected.`);
+      addNote('info', `${meta.alias}: ${ede.tagCount} tag candidate(s) and ${ede.noteCount} PDF note(s) were added to EDE for review. Full page text is saved locally; AutoCAD is not connected.`);
     } catch (error) {
       const message = extractionFailureMessage(error);
       await updatePdfMeta(meta.id, {
@@ -323,6 +357,130 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
     } catch { addNote('error', 'The original PDF could not be read for download.'); }
   };
 
+  const downloadRunner = async () => {
+    if (!saved.length || progress !== null || isPreparingRunner || loading || loadError) return;
+    setIsPreparingRunner(true);
+    setRunnerMessage('');
+    try {
+      const totalBytes = saved.reduce((total, item) => total + item.size, 0);
+      if (totalBytes > MAX_RUNNER_BATCH_BYTES) {
+        throw new Error('The saved source PDFs exceed the 500 MB limit for this local AutoCAD runner package.');
+      }
+      const standards = loadCadStandardsLibrary();
+      if (projectId && !standards.projects[projectId]) {
+        throw new Error('That project library is no longer available. Select a current project mapping or use Legends Library only.');
+      }
+      const candidateItems: CadLibraryItem[] = [
+        ...standards.companyItems,
+        ...(projectId ? standards.projects[projectId]?.items ?? [] : []),
+      ];
+      const approved = candidateItems.filter((item) =>
+        item.category === 'symbol' &&
+        item.reviewStatus === 'reviewed' &&
+        item.sourceKind === 'extracted-dwg'
+      );
+      const approvedSymbols: ApprovedRunnerSymbol[] = approved.flatMap((item) => {
+        const fieldValue = (label: string) => item.fields.find((field) => field.label === label)?.value?.trim() ?? '';
+        const sourceId = fieldValue('Source drawing ID');
+        const blockAssetId = fieldValue('Block asset ID');
+        const blockName = fieldValue('Block name');
+        const fallbackCategory = fieldValue('Fallback category');
+        const sourceDiscipline = fieldValue('Source discipline');
+        if (!sourceId || !blockAssetId || !blockName || !fallbackCategory ||
+          (sourceDiscipline !== 'PFD' && sourceDiscipline !== 'P&ID' && sourceDiscipline !== 'Shared')) return [];
+        return [{
+          sourceId,
+          blockAssetId,
+          blockName,
+          fallbackCategory,
+          discipline: sourceDiscipline,
+          ...(item.scope === 'project' && item.projectId ? { projectId: item.projectId } : {}),
+        }];
+      });
+      const approvedStandards: ApprovedRunnerStandard[] = candidateItems.flatMap((item) => {
+        if (item.sourceKind !== 'extracted-dwg' || item.reviewStatus !== 'reviewed' ||
+          (item.category !== 'layer' && item.category !== 'textStyle')) return [];
+        const fieldValue = (label: string) => item.fields.find((field) => field.label === label)?.value?.trim() ?? '';
+        const sourceDiscipline = fieldValue('Source discipline');
+        const name = fieldValue('CAD name');
+        if (!name || (sourceDiscipline !== 'PFD' && sourceDiscipline !== 'P&ID' && sourceDiscipline !== 'Shared')) return [];
+        return [{
+          name,
+          category: item.category,
+          detail: fieldValue('Extracted details'),
+          discipline: sourceDiscipline,
+          ...(item.scope === 'project' && item.projectId ? { projectId: item.projectId } : {}),
+        }];
+      });
+      const uniqueAssetIds = [...new Set(approvedSymbols.map((symbol) => symbol.blockAssetId))];
+      const blockAssets: RunnerBlockAsset[] = await Promise.all(uniqueAssetIds.map(async (id) => ({
+        id,
+        content: await getLocalCadBlockAsset(id),
+      })));
+      const blob = buildAutoCadDwgRunnerPackage(
+        await Promise.all(saved.map(async (meta) => ({
+          pageCount: meta.pageCount,
+          pdfBytes: new Uint8Array(await getPdfBytes(meta.id)),
+          discipline,
+          ...(projectId ? { projectId } : {}),
+        }))),
+        approvedSymbols,
+        blockAssets,
+        approvedStandards,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'autocad-runner-with-source-pdfs.zip';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const runnerPageTotal = saved.reduce((total, item) => total + item.pageCount, 0);
+      setRunnerMessage(
+        `Runner and ${saved.length} source PDF(s) downloaded. It can create ${runnerPageTotal} separate DWG file(s). ` +
+        `${approvedSymbols.filter((symbol) => (symbol.discipline === discipline || symbol.discipline === 'Shared') && (!symbol.projectId || symbol.projectId === projectId)).length} reviewed symbol mapping(s) and ` +
+        `${approvedStandards.filter((standard) => (standard.discipline === discipline || standard.discipline === 'Shared') && (!standard.projectId || standard.projectId === projectId)).length} reviewed layer/text-style mapping(s) are available to this ${discipline} run.`
+      );
+    } catch (error) {
+      setRunnerMessage(error instanceof Error ? error.message : 'The AutoCAD runner could not be prepared. Try a smaller PDF batch.');
+    } finally {
+      setIsPreparingRunner(false);
+    }
+  };
+
+  const downloadDxf = async (onlyPdf?: PdfMeta) => {
+    const scale = Number(dxfScale);
+    if (!Number.isFinite(scale) || scale <= 0) {
+      setDxfMessage('Enter a scale multiplier greater than zero.');
+      return;
+    }
+    setIsPreparingDxf(true);
+    setDxfMessage('Reading PDF vector geometry…');
+    try {
+      const { buildPdfDxfPackage } = await import('@/lib/pdf-dxf-export');
+      const result = await buildPdfDxfPackage(
+        (onlyPdf ? [onlyPdf] : saved).map((meta) => ({ aliasNumber: meta.aliasNumber, bytes: () => getPdfBytes(meta.id) })),
+        scale,
+        (pdf, page, total) => { if (mounted.current) setDxfMessage(`Creating DXF: PDF ${pdf} · page ${page} of ${total}…`); },
+        () => mounted.current && disciplineRef.current === discipline,
+      );
+      if (!mounted.current || disciplineRef.current !== discipline) return;
+      const url = URL.createObjectURL(result.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'pdf-dxf-pages.zip';
+      document.body.append(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const skipped = result.reports.length - result.exported;
+      setDxfMessage(`${result.exported} DXF page(s) created${skipped ? `; ${skipped} page(s) skipped—read the report` : ''}. Raw vector output—not a verified exact PDF match. Compare each page with its source; library replacement and engineering scale are not verified.`);
+    } catch (error) {
+      if (mounted.current) setDxfMessage(error instanceof Error ? error.message : 'DXF export failed; no CAD output was confirmed.');
+    } finally {
+      if (mounted.current) setIsPreparingDxf(false);
+    }
+  };
+
   const selected = useMemo(() => saved.find((m) => m.id === selectedId) ?? null, [saved, selectedId]);
   const sourceMarkers = useMemo(() => {
     if (!selectedId || !targetRecordId) return [];
@@ -347,7 +505,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         <div>
           <div className="pdf-kicker">PDF INPUT · LOCAL SOURCE FILES · {discipline}</div>
           <h2 id="pdf-workflow-title">Source PDF files</h2>
-          <p>Add the PDFs for this {discipline} workspace. They are saved privately in this browser and shown as PDF 1, PDF 2 and so on.</p>
+          <p>Add PDFs for this {discipline} workspace. They stay in this browser and appear as PDF 1, PDF 2, and so on.</p>
         </div>
         <div className="pdf-actions">
           <label className="btn primary pdf-add-control" data-testid="label-add-pdfs">
@@ -366,12 +524,19 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
 
       <div className="pdf-trust-note" data-testid="text-pdf-local-only">
         <HardDrive size={15} />
-        <span>
-          <strong>Saved on this device only.</strong> These PDFs stay in this browser. They are not uploaded, not backed up to any cloud, and not synced to other devices.
-          Clearing browser data will remove them. Download an original if you need a copy. Original PDFs are unchanged; generic aliases hide filenames, not names or logos inside a PDF.
-          {' '}Searchable text is read here; scanned pages use OCR in this browser. Only the generic OCR engine and English language data are downloaded; the PDF itself is not sent to that service.
-          {!hashSupported && ' Duplicate check needs a secure browser context, so new PDFs cannot be added here.'}
-        </span>
+        <div className="pdf-trust-copy">
+          <span>
+            <strong>Saved on this device only.</strong> PDFs are not uploaded, backed up, or synced. Clearing browser data removes them.
+            {!hashSupported && ' New PDFs cannot be added in this browser because duplicate checking needs a secure connection.'}
+          </span>
+          <details className="pdf-privacy-details">
+            <summary>Privacy and scanned PDFs</summary>
+            <p>
+              Original PDFs are not changed. Searchable text and scanned pages are read in this browser. The OCR code and language files may be downloaded, but the PDF itself is not sent. PDF aliases hide file names only; names and logos printed inside the pages remain visible.
+              {' '}Download an original if you need a separate copy.
+            </p>
+          </details>
+        </div>
       </div>
 
       <div className="pdf-storage-line" data-testid="text-pdf-storage">
@@ -512,9 +677,51 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         </div>
       )}
 
+      <div className="pdf-capabilities">
+        <div className="pdf-capability-storage pdf-dxf-export">
+          <div className="capability-heading"><strong>Create DXF — no AutoCAD needed</strong></div>
+          <label className="runner-project-choice">
+            <span>Scale multiplier · 1 = PDF paper size in mm</span>
+            <input type="number" min="0.000001" step="any" value={dxfScale}
+              onChange={(event) => setDxfScale(event.target.value)} aria-label="DXF scale multiplier" />
+          </label>
+          <button className="btn primary" type="button" disabled={!saved.length || busy || loading || isPreparingDxf || isPreparingRunner || !!loadError}
+            onClick={() => void downloadDxf(selected ?? undefined)} data-testid="button-export-dxf">
+            {isPreparingDxf ? <><Loader2 size={14} className="pdf-spin" /> Creating DXF…</> : <><Download size={14} /> {selected ? `${selected.alias} · Download DXF pages` : 'Download all DXF pages'}</>}
+          </button>
+          {selected && saved.length > 1 && <button className="btn" type="button"
+            disabled={busy || loading || isPreparingDxf || isPreparingRunner || !!loadError}
+            onClick={() => void downloadDxf()} data-testid="button-export-all-dxf">All PDFs · Download DXF pages</button>}
+          <p>One editable DXF per vector PDF page. Scanned pages are not automatically traced. This exports raw PDF geometry, not library-standard symbols. Source details may remain—review/redact before sharing.</p>
+          {dxfMessage && <p role="status" className="pdf-runner-message">{dxfMessage}</p>}
+        </div>
+        <div className="pdf-capability-convert">
+          <div className="capability-heading"><span className="capability-number">01</span><strong>Page check</strong></div>
+          <div className="pdf-page-summary" data-testid="text-pdf-page-summary">
+            {saved.length ? `${saved.length} PDF(s) · ${totalPages} total page(s)` : 'Add PDFs to prepare an AutoCAD runner.'}
+          </div>
+        </div>
+        <div className="pdf-capability-storage">
+          <div className="capability-heading"><span className="capability-number">02</span><strong>Local AutoCAD runner</strong></div>
+          <label className="runner-project-choice">
+            <span>Project-specific approved mappings</span>
+            <select value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-label="Project mappings for this runner">
+              <option value="">Legends Library only</option>
+              {projectOptions.map((project) => <option value={project.id} key={project.id}>{project.label}</option>)}
+            </select>
+          </label>
+          <button className="btn primary" type="button" disabled={!saved.length || busy || loading || isPreparingRunner || !!loadError}
+            aria-describedby="runner-description" onClick={() => void downloadRunner()} data-testid="button-convert-to-dwg">
+            {isPreparingRunner ? <><Loader2 size={14} className="pdf-spin" /> Preparing…</> : <><Wrench size={14} /> Download AutoCAD batch runner</>}
+          </button>
+          <p id="runner-description">The ZIP contains the saved PDFs and only individually exported blocks from approved mappings—not original source DWGs. Run it in Windows AutoCAD. Unmatched symbols retain source geometry or use an approved same-category fallback with a red review cloud and source-page reference.</p>
+          {runnerMessage && <p role="status" className="pdf-runner-message">{runnerMessage}</p>}
+        </div>
+      </div>
+
       <div className="pdf-final-status" role="note" data-testid="text-conversion-unavailable">
         <strong><Monitor size={13} style={{ verticalAlign: '-2px' }} /> AutoCAD 2020 is not connected to this browser.</strong>{' '}
-        PDF text/OCR can create review-required EDE tag candidates on this device. DWG processing has not started and no CAD file is generated until the Windows AutoCAD connector is installed and connected.
+        DXF vector export runs directly in this browser. Native DWG still requires the downloaded helper to run in Windows AutoCAD; the browser does not connect to AutoCAD.
       </div>
     </section>
   );

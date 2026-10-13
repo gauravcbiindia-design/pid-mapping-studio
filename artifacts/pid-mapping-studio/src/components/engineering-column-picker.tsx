@@ -1,11 +1,11 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
-import { ENGINEERING_FIELDS, FIELD_LABELS } from '@/lib/engineering-data';
-import type { EngineeringField } from '@/lib/engineering-data';
+import { ENGINEERING_TABLE_FIELDS, FIELD_LABELS } from '@/lib/engineering-data';
+import type { EngineeringTableField } from '@/lib/engineering-data';
 
 export function EngineeringColumnPicker({ order, hidden, onChange }: {
-  order: EngineeringField[];
-  hidden: EngineeringField[];
-  onChange: (order: EngineeringField[], hidden: EngineeringField[]) => void;
+  order: EngineeringTableField[];
+  hidden: EngineeringTableField[];
+  onChange: (order: EngineeringTableField[], hidden: EngineeringTableField[]) => void;
 }) {
   const move = (index: number, offset: number) => {
     const next = [...order];
@@ -23,7 +23,7 @@ export function EngineeringColumnPicker({ order, hidden, onChange }: {
         <button type="button" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move ${FIELD_LABELS[field]} up`}><ArrowUp size={14}/></button>
         <button type="button" disabled={index === order.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${FIELD_LABELS[field]} down`}><ArrowDown size={14}/></button>
       </div>)}
-      <button className="btn subtle" type="button" onClick={() => onChange([...ENGINEERING_FIELDS], [])}>Reset columns</button>
+      <button className="btn subtle" type="button" onClick={() => onChange([...ENGINEERING_TABLE_FIELDS], [])}>Reset columns</button>
     </div>
   </details>;
 }

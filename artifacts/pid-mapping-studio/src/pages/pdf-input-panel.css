@@ -38,8 +38,21 @@
 .ppv-error { color: #8b5140; flex-direction: column; }
 .pdf-final-status { margin-top: 13px; padding: 12px; border: 1px solid #e8d3ad; border-radius: 4px; background: #f7edda; color: #655238; font-size: 11px; line-height: 1.55; }
 .pdf-final-status strong { color: #644b2c; }
+.pdf-trust-copy { display: grid; gap: 7px; min-width: 0; }
+.pdf-dxf-export { grid-column: 1 / -1; }
+.pdf-dxf-export .capability-heading { font-size: 16px; }
+.pdf-dxf-export .runner-project-choice { display: grid; gap: 7px; margin: 14px 0; font-size: 13px; }
+.pdf-dxf-export input { width: min(100%, 220px); min-height: 40px; padding: 8px 12px; border: 1px solid var(--pid-border, #526578); border-radius: 5px; background: var(--pid-raised, #182432); color: var(--pid-text, #e9f0f6); font: inherit; }
+.pdf-dxf-export .btn { min-height: 42px; font-size: 14px; margin: 0 8px 8px 0; }
+.pdf-dxf-export p { font-size: 13px !important; line-height: 1.6 !important; max-width: 900px; }
+.pdf-privacy-details { color: #506a63; }
+.pdf-privacy-details summary { width: fit-content; cursor: pointer; color: #365f57; font-size: 10px; font-weight: 700; }
+.pdf-privacy-details summary::before { content: '›'; display: inline-block; margin-right: 5px; color: #68827b; font-size: 15px; transform: rotate(0); }
+.pdf-privacy-details[open] summary::before { transform: rotate(90deg); }
+.pdf-privacy-details p { max-width: 780px; margin: 7px 0 0; color: #637770; font-size: 10px; line-height: 1.5; }
 @media (max-width: 600px) {
   .pdf-file-row { flex-wrap: wrap; }
   .pdf-row-actions { width: 100%; justify-content: flex-start; }
   .pdf-extract-btn { min-height: 38px; }
+  .pdf-privacy-details summary { min-height: 30px; display: inline-flex; align-items: center; }
 }

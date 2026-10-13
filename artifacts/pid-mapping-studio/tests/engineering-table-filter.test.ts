@@ -49,3 +49,34 @@ test('independent column filters combine, including a filter for blanks', () => 
   );
   assert.equal(matchesEngineeringColumnFilters(rows[0], { reviewStatus: [] }), false);
 });
+
+test('Stable ID is an individual filterable value and is never derived from the visible tag', () => {
+  const first = row('Equipment', 'P-101', 'Needs review', '', 'Pump');
+  const second = row('Equipment', 'P-102', 'Reviewed', '', 'Pump');
+  const stableId = first.id;
+  first.itemTag = 'P-999';
+
+  assert.deepEqual(getEngineeringColumnFilterOptions([first, second], 'stableId'), [
+    { value: first.id, count: 1 },
+    { value: second.id, count: 1 },
+  ].sort((a, b) => a.value.localeCompare(b.value)));
+  assert.deepEqual(
+    [first, second].filter((record) => matchesEngineeringColumnFilters(record, { stableId: [stableId] })).map((record) => record.itemTag),
+    ['P-999'],
+  );
+});
+
+test('Notes are available as an individual column filter', () => {
+  const first = row('Equipment', 'P-101', 'Needs review', '', 'Pump');
+  const second = row('Equipment', 'P-102', 'Reviewed', '', 'Pump');
+  first.notes = 'Keep the bypass valve accessible.';
+
+  assert.deepEqual(getEngineeringColumnFilterOptions([first, second], 'notes'), [
+    { value: 'Keep the bypass valve accessible.', count: 1 },
+    { value: '', count: 1 },
+  ]);
+  assert.deepEqual(
+    [first, second].filter((record) => matchesEngineeringColumnFilters(record, { notes: ['Keep the bypass valve accessible.'] })),
+    [first],
+  );
+});

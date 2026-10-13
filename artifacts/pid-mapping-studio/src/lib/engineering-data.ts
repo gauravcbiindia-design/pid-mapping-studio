@@ -9,6 +9,7 @@ export type PdfSourceLocation = {
 };
 
 export type EngineeringRow = {
+  /** Permanent StableID for this engineering object; never a tag, coordinate or CAD handle. */
   id: string;
   type:
     | 'Equipment' | 'Equipment Component' | 'Equipment Heat Transfer' | 'Equipment Mechanical'
@@ -23,15 +24,24 @@ export type EngineeringRow = {
   equipmentType: string;
   equipmentName: string;
   drawingRef: string;
+  /** Drawing where the object is recorded as placed; blank means available/not placed. */
+  placementDrawingRef: string;
   nominalDiameter: string;
+  plantGroup: string;
+  fluidService: string;
   pipingMaterial: string;
   lineSpec: string;
   flow: string;
+  flowDirection: string;
   heatTracing: string;
   insulation: string;
+  fromTag: string;
+  toTag: string;
+  groupStatus: string;
   opcDrawing: string;
   connection: string;
   description: string;
+  notes: string;
   sourcePage: string;
   reviewStatus: 'Manual' | 'Needs review' | 'Reviewed';
   sourcePdfId?: string;
@@ -48,36 +58,88 @@ export type EngineeringDrawing = {
   sourceAlias?: string;
 };
 
-const rowFields = ['itemTag','tagPrefix','tagSequence','tagSuffix','equipmentClass','equipmentType','equipmentName','drawingRef','nominalDiameter','pipingMaterial','lineSpec','flow','heatTracing','insulation','opcDrawing','connection','description','sourcePage','reviewStatus'] as const;
+const rowFields = ['itemTag','tagPrefix','tagSequence','tagSuffix','equipmentClass','equipmentType','equipmentName','drawingRef','placementDrawingRef','nominalDiameter','plantGroup','fluidService','pipingMaterial','lineSpec','flow','flowDirection','heatTracing','insulation','fromTag','toTag','groupStatus','opcDrawing','connection','description','notes','sourcePage','reviewStatus'] as const;
 export type EngineeringField = typeof rowFields[number];
-export const FIELD_LABELS: Record<EngineeringField, string> = {
+export type EngineeringTableField = EngineeringField | 'stableId';
+export type EngineeringPlacementStatus = 'current' | 'another' | 'available';
+export const ENGINEERING_TABLE_FIELDS: EngineeringTableField[] = [...rowFields, 'stableId'];
+export type StableId = string;
+export const STABLE_ID_PATTERN = /^[0-9A-F]{32}$/;
+const LEGACY_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const PIPE_RUN_BOUNDARY_FIELDS: readonly EngineeringField[] = [
+  'plantGroup', 'fluidService', 'nominalDiameter', 'pipingMaterial', 'lineSpec',
+  'insulation', 'heatTracing', 'groupStatus',
+];
+const VALID_PIPE_RUN_GROUP_STATUSES = ['', 'Start', 'Continue', 'Branch', 'Merge', 'End-of-Group'] as const;
+
+export function createStableId(): StableId {
+  return crypto.randomUUID().replaceAll('-', '').toUpperCase();
+}
+
+/** Converts legacy UUID row IDs to their compact permanent StableID without breaking their identity. */
+export function normalizeStableId(value: string): StableId {
+  const upper = value.toUpperCase();
+  if (STABLE_ID_PATTERN.test(upper)) return upper;
+  if (LEGACY_UUID_PATTERN.test(value)) return upper.replaceAll('-', '');
+  throw new Error('A Stable ID must contain exactly 32 letters or numbers (A–F, 0–9).');
+}
+
+export function getEngineeringTableValue(row: EngineeringRow, field: EngineeringTableField): string {
+  return field === 'stableId' ? row.id : row[field];
+}
+
+/** Placement is explicit metadata, separate from the source PDF/drawing reference. */
+export function getEngineeringPlacementStatus(
+  row: Pick<EngineeringRow, 'placementDrawingRef'>,
+  drawing: Pick<EngineeringDrawing, 'id' | 'name'>,
+): EngineeringPlacementStatus {
+  const placement = row.placementDrawingRef.trim().normalize('NFKC').replace(/\s+/g, ' ').toLocaleLowerCase();
+  if (!placement) return 'available';
+  const currentReferences = [drawing.id, drawing.name]
+    .map((reference) => reference.trim().normalize('NFKC').replace(/\s+/g, ' ').toLocaleLowerCase());
+  return currentReferences.includes(placement) ? 'current' : 'another';
+}
+
+export const FIELD_LABELS: Record<EngineeringTableField, string> = {
   itemTag:'Item Tag',tagPrefix:'Tag Prefix',tagSequence:'Tag Sequence',tagSuffix:'Tag Suffix',
-  equipmentClass:'Equipment Class',equipmentType:'Equipment Type',equipmentName:'Equipment Name',drawingRef:'Drawing Reference',
-  nominalDiameter:'Nominal Diameter',pipingMaterial:'Piping Material',lineSpec:'Line Spec',flow:'Flow',heatTracing:'Heat Tracing',
-  insulation:'Insulation',opcDrawing:'OPC Drawing',connection:'Connection',description:'Description',
-  sourcePage:'Source page',reviewStatus:'Review status',
+  equipmentClass:'Equipment Class',equipmentType:'Equipment Type',equipmentName:'Equipment Name',drawingRef:'Source Drawing / Page',
+  placementDrawingRef:'Placed on Drawing',
+  nominalDiameter:'Nominal Diameter',plantGroup:'Plant Group',fluidService:'Fluid / Service',
+  pipingMaterial:'Piping Material Class',lineSpec:'Line Spec',flow:'Flow',flowDirection:'Flow Direction',
+  heatTracing:'Heat Tracing',insulation:'Insulation',fromTag:'From',toTag:'To',groupStatus:'Group Status',
+  opcDrawing:'OPC Drawing',connection:'Connection',description:'Description',notes:'Notes',
+  sourcePage:'Source page',reviewStatus:'Review status',stableId:'Stable ID',
 };
 export const ENGINEERING_FIELDS = rowFields;
-export const FIELD_HELP: Record<EngineeringField, string> = {
-  itemTag: 'The unique tag printed beside the equipment, line, valve, or instrument.',
+export const FIELD_HELP: Record<EngineeringTableField, string> = {
+  itemTag: 'The tag printed beside the equipment, line, valve, or instrument. A repeated Pipe Run tag needs different line data.',
   tagPrefix: 'The letter code at the start of the tag.',
   tagSequence: 'The main number in the tag.',
   tagSuffix: 'Extra letters or numbers after the main tag number.',
   equipmentClass: 'The approved class or family for this equipment.',
   equipmentType: 'What the equipment is, such as a pump or vessel, when the drawing states it.',
   equipmentName: 'The equipment name or service, only when the source clearly labels it.',
-  drawingRef: 'The source drawing or PDF page reference.',
+  drawingRef: 'The source drawing or PDF page where this record came from.',
+  placementDrawingRef: 'The CAD drawing that contains this object. Blank means available or not placed. This is a reference only; it does not place or move CAD entities.',
   nominalDiameter: 'The stated pipe or nozzle size, such as DN50 or 2 inch.',
-  pipingMaterial: 'The stated pipe material or material code.',
+  plantGroup: 'The plant, unit, or area group, if stated.',
+  fluidService: 'The stated fluid or process service for this line.',
+  pipingMaterial: 'The approved piping material class or code.',
   lineSpec: 'The piping line class/specification code. It is separate from the pipe run tag.',
   flow: 'The stated flow value or direction. A line arrow alone is not converted to a value.',
+  flowDirection: 'The confirmed upstream/downstream flow direction.',
   heatTracing: 'The stated heat-tracing requirement or type.',
   insulation: 'The stated insulation requirement or code.',
+  fromTag: 'The connected source tag or point shown for this pipe run.',
+  toTag: 'The connected destination tag or point shown for this pipe run.',
+  groupStatus: 'Start, Continue, Branch, Merge, or End-of-Group for the pipe run.',
   opcDrawing: 'The linked off-page connector drawing number, if shown.',
   connection: 'A stated connection or connected item; line geometry is not inferred here.',
-  description: 'A short source-based note. Blank means no clear value was found.',
+  description: 'A short object description from the source. Blank means no clear value was found.',
+  notes: 'Drawing notes or additional comments associated with this record.',
   sourcePage: 'The page in the original PDF where this candidate was found.',
   reviewStatus: 'Needs review means check the tag and fields before using them.',
+  stableId: 'Permanent object identity. It stays the same when the tag, drawing, size, or geometry changes.',
 };
 export const OBJECT_TYPES: EngineeringRow['type'][] = [
   'Equipment', 'Equipment Component', 'Equipment Heat Transfer', 'Equipment Mechanical',
@@ -86,7 +148,7 @@ export const OBJECT_TYPES: EngineeringRow['type'][] = [
 ];
 const storageKey = (discipline: Discipline) => `pid-mapping-studio:engineering-workspace:v2:${discipline}`;
 
-function normalizeDrawings(value: unknown): EngineeringDrawing[] {
+function normalizeDrawings(value: unknown, onMigration?: () => void): EngineeringDrawing[] {
   if (!Array.isArray(value)) return validateDrawings(value);
   const normalized = value.map((drawing) => {
     if (!drawing || typeof drawing !== 'object' || !Array.isArray(drawing.rows)) return drawing;
@@ -94,10 +156,40 @@ function normalizeDrawings(value: unknown): EngineeringDrawing[] {
       ...drawing,
       rows: drawing.rows.map((row: Record<string, unknown>) => {
         if (!row || typeof row !== 'object') return row;
+        const legacyId = typeof row.id === 'string' ? row.id : '';
+        let stableId: string;
+        try {
+          stableId = normalizeStableId(legacyId);
+        } catch {
+          stableId = createStableId();
+        }
+        if (stableId !== row.id) onMigration?.();
+        const description = typeof row.description === 'string' ? row.description : '';
+        const hasNotes = typeof row.notes === 'string';
+        const notePrefix = /^(?:PDF text|OCR text) note — review against source:\s*/iu;
+        const notes = hasNotes
+          ? row.notes as string
+          : row.type === 'Item Note'
+            ? description.replace(notePrefix, '')
+            : '';
+        const normalizedDescription = !hasNotes && row.type === 'Item Note' && description
+          ? (notePrefix.test(description) ? 'Drawing note extracted from PDF; check the source page.' : '')
+          : description;
+        if (!hasNotes || normalizedDescription !== description) onMigration?.();
         return {
           ...row,
+          id: stableId,
+          description: normalizedDescription,
+          notes,
           sourcePage: typeof row.sourcePage === 'string' ? row.sourcePage : '',
+          placementDrawingRef: typeof row.placementDrawingRef === 'string' ? row.placementDrawingRef : '',
           lineSpec: typeof row.lineSpec === 'string' ? row.lineSpec : '',
+          plantGroup: typeof row.plantGroup === 'string' ? row.plantGroup : '',
+          fluidService: typeof row.fluidService === 'string' ? row.fluidService : '',
+          flowDirection: typeof row.flowDirection === 'string' ? row.flowDirection : '',
+          fromTag: typeof row.fromTag === 'string' ? row.fromTag : '',
+          toTag: typeof row.toTag === 'string' ? row.toTag : '',
+          groupStatus: typeof row.groupStatus === 'string' ? row.groupStatus : '',
           ...(row.sourceLocations === undefined ? {} : { sourceLocations: row.sourceLocations }),
           reviewStatus: row.reviewStatus === 'Needs review' || row.reviewStatus === 'Reviewed' ? row.reviewStatus : 'Manual',
         };
@@ -110,6 +202,7 @@ function normalizeDrawings(value: unknown): EngineeringDrawing[] {
 function validateDrawings(value: unknown): EngineeringDrawing[] {
   if (!Array.isArray(value) || value.length > 500) throw new Error('Invalid drawing catalog. Keep a backup and do not overwrite saved data.');
   const ids = new Set<string>();
+  const rowIds = new Set<string>();
   let total = 0;
   for (const drawing of value) {
     if (!drawing || typeof drawing !== 'object' || typeof drawing.id !== 'string' ||
@@ -118,10 +211,12 @@ function validateDrawings(value: unknown): EngineeringDrawing[] {
       throw new Error('The drawing catalog contains an invalid or duplicate drawing.');
     }
     ids.add(drawing.id);
-    const tags = new Set<string>();
-    const rowIds = new Set<string>();
+    const tags = new Map<string, EngineeringRow[]>();
     for (const row of drawing.rows) {
-      if (!row || typeof row !== 'object' || typeof row.id !== 'string' || rowIds.has(row.id) ||
+      if (row?.type === 'Pipe Run' && !VALID_PIPE_RUN_GROUP_STATUSES.includes(row.groupStatus as typeof VALID_PIPE_RUN_GROUP_STATUSES[number])) {
+        throw new Error('Pipe Run group status must be Start, Continue, Branch, Merge, or End-of-Group.');
+      }
+      if (!row || typeof row !== 'object' || typeof row.id !== 'string' || !STABLE_ID_PATTERN.test(row.id) || rowIds.has(row.id) ||
           !OBJECT_TYPES.includes(row.type) || ENGINEERING_FIELDS.some((field) => typeof row[field] !== 'string' || row[field].length > 2000) ||
           !['Manual', 'Needs review', 'Reviewed'].includes(row.reviewStatus) ||
           (row.sourcePdfId !== undefined && typeof row.sourcePdfId !== 'string') ||
@@ -139,13 +234,22 @@ function validateDrawings(value: unknown): EngineeringDrawing[] {
                 (item.y as number) + (item.height as number) > 1.02;
             })
           )) ||
-          !row.itemTag.trim() || tags.has(row.itemTag.trim().toLowerCase())) {
-        throw new Error('Each record needs a unique item tag, a valid object type, and text fields.');
+          !row.itemTag.trim()) {
+        throw new Error('Each record needs a valid Stable ID, object type, and text fields.');
+      }
+      const key = row.itemTag.trim().toLowerCase();
+      const sameTag = tags.get(key) ?? [];
+      if (sameTag.length && (
+        row.type !== 'Pipe Run' ||
+        sameTag.some((prior) => prior.type !== 'Pipe Run' ||
+          !PIPE_RUN_BOUNDARY_FIELDS.some((field) => prior[field] !== row[field]))
+      )) {
+        throw new Error('This tag is already used. Repeated Pipe Run tags need different line-defining data.');
       }
       if (typeof row.x !== 'number' || typeof row.y !== 'number' || !Number.isFinite(row.x) || !Number.isFinite(row.y)) {
         throw new Error('A record contains invalid coordinates.');
       }
-      tags.add(row.itemTag.trim().toLowerCase());
+      tags.set(key, [...sameTag, row]);
       rowIds.add(row.id);
       total += 1;
     }
@@ -156,7 +260,17 @@ function validateDrawings(value: unknown): EngineeringDrawing[] {
 
 export function getEngineeringDrawings(discipline: Discipline): EngineeringDrawing[] {
   const saved = window.localStorage.getItem(storageKey(discipline));
-  return saved ? normalizeDrawings(JSON.parse(saved)) : [];
+  if (!saved) return [];
+  let needsMigration = false;
+  const drawings = normalizeDrawings(JSON.parse(saved), () => { needsMigration = true; });
+  if (needsMigration) {
+    try {
+      window.localStorage.setItem(storageKey(discipline), JSON.stringify(drawings));
+    } catch {
+      throw new Error('Saved records were read, but the data-format update could not be saved because browser storage is full. The original saved data was not overwritten; download a backup before freeing space.');
+    }
+  }
+  return drawings;
 }
 
 export function getEngineeringSavedText(discipline: Discipline) {
@@ -176,17 +290,17 @@ export function saveEngineeringDrawings(discipline: Discipline, drawings: Engine
 export function createEngineeringRow(type: EngineeringRow['type'], itemTag: string, drawingRef: string): EngineeringRow {
   return {
     ...Object.fromEntries(ENGINEERING_FIELDS.map((field) => [field, ''])),
-    id: crypto.randomUUID(), type, itemTag: itemTag.trim(), drawingRef, reviewStatus: 'Manual', x: 0, y: 0,
+    id: createStableId(), type, itemTag: itemTag.trim(), drawingRef, reviewStatus: 'Manual', x: 0, y: 0,
   } as EngineeringRow;
 }
 
 export function engineeringBackup(discipline: Discipline, drawings: EngineeringDrawing[]) {
-  return JSON.stringify({ version: 3, discipline, drawings }, null, 2);
+  return JSON.stringify({ version: 5, discipline, drawings }, null, 2);
 }
 
 export function parseEngineeringBackup(text: string, discipline: Discipline): EngineeringDrawing[] {
   const parsed = JSON.parse(text);
-  if (![2, 3].includes(parsed?.version) || parsed?.discipline !== discipline) {
+  if (![2, 3, 4, 5].includes(parsed?.version) || parsed?.discipline !== discipline) {
     throw new Error(`Choose a ${discipline.toUpperCase()} workspace backup. PFD and P&ID backups stay separate.`);
   }
   return normalizeDrawings(parsed.drawings);
@@ -199,6 +313,7 @@ export type PdfTagCandidate = {
   tagSequence: string;
   tagSuffix: string;
   pageNumber: number;
+  description?: string;
   nominalDiameter?: string;
   pipingMaterial?: string;
   lineSpec?: string;
@@ -250,7 +365,14 @@ function createPdfRow(candidate: PdfTagCandidate, source: { id: string; alias: s
   row.sourcePdfId = source.id;
   row.sourceLocations = candidate.sourceLocations?.slice(0, 500);
   row.reviewStatus = 'Needs review';
-  row.description = 'Tag candidate found in the PDF. Confirm the object type and details before using it.';
+  if (candidate.type === 'Item Note') {
+    row.notes = (candidate.description ?? '')
+      .replace(/^(?:PDF text|OCR text) note — review against source:\s*/iu, '');
+    row.description = 'Drawing note extracted from PDF; check the source page.';
+  } else {
+    row.description = candidate.description
+      ?? 'Tag candidate found in the PDF. Confirm the object type and details before using it.';
+  }
   return row;
 }
 
@@ -327,8 +449,8 @@ export function downloadEngineeringFile(name: string, content: BlobPart, type: s
 }
 
 export function engineeringCsv(rows: EngineeringRow[]): string {
-  return serializeEngineeringCsv(['Object type', ...ENGINEERING_FIELDS.map((field) => FIELD_LABELS[field])],
-    rows.map((row) => [row.type, ...ENGINEERING_FIELDS.map((field) => row[field])]));
+  return serializeEngineeringCsv(['Object type', ...ENGINEERING_TABLE_FIELDS.map((field) => FIELD_LABELS[field])],
+    rows.map((row) => [row.type, ...ENGINEERING_TABLE_FIELDS.map((field) => getEngineeringTableValue(row, field))]));
 }
 
 export function serializeEngineeringCsv(headers: readonly string[], rows: readonly (readonly (string | number)[])[]): string {
@@ -361,14 +483,25 @@ export function parseEngineeringCsv(text: string, drawingRef: string): Engineeri
   const header = table.shift()?.map((v) => v.trim().toLowerCase()) ?? [];
   const typeIndex = header.findIndex((v) => v === 'object type' || v === 'type');
   const fieldIndexes = ENGINEERING_FIELDS.map((field) => header.findIndex((v) => v === field.toLowerCase() || v === FIELD_LABELS[field].toLowerCase()));
+  const stableIdIndex = header.findIndex((value) => value === 'stableid' || value === FIELD_LABELS.stableId.toLowerCase());
   if (typeIndex < 0 || fieldIndexes[0] < 0) throw new Error('CSV needs Object type and Item Tag columns. Download the template first.');
   if (!table.length) throw new Error('The CSV contains no records.');
   if (table.length > 20000) throw new Error('Import at most 20,000 records.');
+  const rowIds = new Set<string>();
   return table.map((cells, index) => {
     if (cells.length !== header.length) throw new Error(`CSV row ${index + 2} has the wrong number of columns.`);
     const type = OBJECT_TYPES.find((value) => value.toLowerCase() === cells[typeIndex]?.trim().toLowerCase());
     if (!type) throw new Error(`CSV row ${index + 2} has an unsupported object type.`);
     const row = createEngineeringRow(type, cells[fieldIndexes[0]] ?? '', drawingRef);
+    if (stableIdIndex >= 0 && cells[stableIdIndex]?.trim()) {
+      try {
+        row.id = normalizeStableId(cells[stableIdIndex].trim());
+      } catch {
+        throw new Error(`CSV row ${index + 2} has an invalid Stable ID.`);
+      }
+    }
+    if (rowIds.has(row.id)) throw new Error(`CSV row ${index + 2} repeats a Stable ID.`);
+    rowIds.add(row.id);
     ENGINEERING_FIELDS.forEach((field, n) => {
       if (fieldIndexes[n] < 0) return;
       const value = cells[fieldIndexes[n]].trim();

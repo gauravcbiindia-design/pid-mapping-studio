@@ -1,5 +1,3 @@
-import candidateSeed from './empty-cad-seed.json';
-
 export type CadStandardCategory =
   | 'titleBlock'
   | 'layer'
@@ -97,7 +95,7 @@ function createCompanySeed(): CadStandardsLibrary {
     // Start empty until the user supplies and approves company CAD standards.
     companyItems: [],
     projects: {},
-    reviewCandidates: structuredClone(candidateSeed) as CadReviewCandidate[],
+    reviewCandidates: [],
     auditTrail: [],
   };
 }
@@ -324,20 +322,36 @@ export function approveCadReviewCandidate(
   library: CadStandardsLibrary,
   candidateId: string,
   targetScope: 'company' | 'project',
+  additionalFields: CadLibraryField[] = [],
 ): CadStandardsLibrary {
   const candidate = library.reviewCandidates.find((entry) => entry.id === candidateId);
   if (!candidate || candidate.status !== 'needs-review') {
     throw new Error('The selected source mapping is no longer awaiting review.');
   }
   if (targetScope === 'company' && candidate.proposedScope !== 'company') {
-    throw new Error('Only a source classified as company material can be approved to company standards.');
+    throw new Error('Only a source classified for the Legends Library can be approved there.');
   }
   if (targetScope === 'project' && candidate.proposedScope === 'company') {
-    throw new Error('Company source mappings must be approved to company standards.');
+    throw new Error('Legends Library source mappings must be approved to the Legends Library.');
+  }
+  const fields = [
+    ...candidate.item.fields.filter((field) =>
+      !additionalFields.some((extra) => extra.label === field.label),
+    ),
+    ...additionalFields,
+  ];
+  if (
+    candidate.item.category === 'symbol' &&
+    candidate.item.sourceKind === 'extracted-dwg' &&
+    (!fields.some((field) => field.label === 'Fallback category' && field.value.trim()) ||
+      !fields.some((field) => field.label === 'Block asset ID' && field.value.trim()))
+  ) {
+    throw new Error('A fallback category and locally extracted block file are required before approving this symbol.');
   }
 
   const reviewed: CadLibraryItem = {
     ...candidate.item,
+    fields,
     scope: targetScope,
     reviewStatus: 'reviewed',
     canPromote: false,
@@ -370,7 +384,7 @@ export function approveCadReviewCandidate(
   const reviewCandidates = library.reviewCandidates.map((entry) =>
     entry.id === candidateId ? { ...entry, status: 'approved' as const } : entry,
   );
-  const scopeLabel = targetScope === 'company' ? 'company standards' : `isolated ${candidate.projectName} library`;
+  const scopeLabel = targetScope === 'company' ? 'Legends Library' : `isolated ${candidate.projectName} library`;
   return {
     ...library,
     companyItems,
@@ -552,7 +566,7 @@ export function saveApprovedCadMapping(
     auditTrail: [
       newAuditEntry(
         'Reviewed mapping saved to project library',
-        `${mapping.name} saved in ${projectName}; company standards and other projects were not changed${mapping.sourceKind === 'synthetic-demo' ? ' (synthetic preview item; company promotion disabled)' : ''}.`,
+        `${mapping.name} saved in ${projectName}; the Legends Library and other projects were not changed${mapping.sourceKind === 'synthetic-demo' ? ' (synthetic preview item; Legends Library promotion disabled)' : ''}.`,
         projectName,
       ),
       ...library.auditTrail,
@@ -574,11 +588,11 @@ export function promoteProjectCadItem(
     item.sourceKind !== 'approved-source-drawing' ||
     !['symbol', 'legend'].includes(item.category)
   ) {
-    throw new Error('Only a human-reviewed symbol or legend mapped from a real source drawing can be promoted to company standards.');
+    throw new Error('Only a human-reviewed symbol or legend mapped from a real source drawing can be promoted to the Legends Library.');
   }
   const promotedId = `company-${item.id}`;
   if (library.companyItems.some((entry) => entry.id === promotedId)) {
-    throw new Error('This mapping is already present in company standards.');
+    throw new Error('This mapping is already present in the Legends Library.');
   }
   const promoted: CadLibraryItem = {
     ...item,
@@ -594,7 +608,7 @@ export function promoteProjectCadItem(
     auditTrail: [
       newAuditEntry(
         'Reviewed project mapping promoted to company',
-        `${item.name} from ${project.projectName} was explicitly promoted to company standards from ${item.sourceFile}.`,
+        `${item.name} from ${project.projectName} was explicitly promoted to the Legends Library from ${item.sourceFile}.`,
         project.projectName,
       ),
       ...library.auditTrail,

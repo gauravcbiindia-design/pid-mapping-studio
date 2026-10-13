@@ -514,10 +514,10 @@ function CadStandardsLibraryRoute() {
     }
   };
 
-  const approveCompany = (candidateId: string) =>
-    commit((current) => approveCadReviewCandidate(current, candidateId, 'company'));
-  const approveProject = (candidateId: string) =>
-    commit((current) => approveCadReviewCandidate(current, candidateId, 'project'));
+  const approveCompany = (candidateId: string, additionalFields?: { label: string; value: string }[]) =>
+    commit((current) => approveCadReviewCandidate(current, candidateId, 'company', additionalFields));
+  const approveProject = (candidateId: string, additionalFields?: { label: string; value: string }[]) =>
+    commit((current) => approveCadReviewCandidate(current, candidateId, 'project', additionalFields));
   const dismiss = (candidateId: string) =>
     commit((current) => dismissCadReviewCandidate(current, candidateId));
   const setCompanyDefault = (purpose: CadPurpose, size: CadSheetSize) =>
@@ -867,12 +867,12 @@ function HomePage() {
   const { isSignedIn } = useAuth();
   return (
     <>
-      <div className="fixed right-4 top-4 z-50 flex items-center gap-2">
+      <div className="app-auth-actions fixed right-4 top-4 z-50 flex items-center gap-2">
         {isSignedIn ? (
           <>
             <Link
               href="/admin/library"
-              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-teal-900/10 bg-white/95 px-3.5 text-sm font-bold text-teal-900 shadow-lg shadow-slate-900/10 backdrop-blur hover:bg-teal-50"
+              className="app-auth-action inline-flex min-h-10 items-center gap-2 rounded-xl border border-teal-900/10 bg-white/95 px-3.5 text-sm font-bold text-teal-900 shadow-lg shadow-slate-900/10 backdrop-blur hover:bg-teal-50"
             >
               <ShieldCheck size={16} /> Admin library
             </Link>
@@ -881,13 +881,13 @@ function HomePage() {
         ) : (
           <Link
             href="/sign-in"
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-teal-900/10 bg-white/95 px-3.5 text-sm font-bold text-teal-900 shadow-lg shadow-slate-900/10 backdrop-blur hover:bg-teal-50"
+            className="app-auth-action inline-flex min-h-10 items-center gap-2 rounded-xl border border-teal-900/10 bg-white/95 px-3.5 text-sm font-bold text-teal-900 shadow-lg shadow-slate-900/10 backdrop-blur hover:bg-teal-50"
           >
             <LockKeyhole size={15} /> Admin sign in
           </Link>
         )}
       </div>
-      <DisciplineChooser />
+      <DisciplineChooser showLocalChip={false} />
     </>
   );
 }

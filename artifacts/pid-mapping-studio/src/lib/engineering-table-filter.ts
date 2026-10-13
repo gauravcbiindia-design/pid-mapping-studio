@@ -1,11 +1,12 @@
-import type { EngineeringField, EngineeringRow } from '@/lib/engineering-data';
+import { getEngineeringTableValue } from '@/lib/engineering-data';
+import type { EngineeringTableField, EngineeringRow } from '@/lib/engineering-data';
 
-export type EngineeringFilterColumn = EngineeringField | 'type';
+export type EngineeringFilterColumn = EngineeringTableField | 'type';
 export type EngineeringColumnFilters = Partial<Record<EngineeringFilterColumn, string[]>>;
 export type EngineeringColumnFilterOption = { value: string; count: number };
 
 export function engineeringFilterValue(row: EngineeringRow, field: EngineeringFilterColumn): string {
-  const value = String(field === 'type' ? row.type : row[field] ?? '');
+  const value = String(field === 'type' ? row.type : getEngineeringTableValue(row, field));
   return value.trim() ? value : '';
 }
 
