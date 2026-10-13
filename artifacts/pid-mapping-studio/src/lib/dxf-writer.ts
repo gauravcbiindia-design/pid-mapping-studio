@@ -1,3 +1,5 @@
+import { createDxfStructure } from './dxf-document-structure';
+
 export type DxfPoint = { x: number; y: number };
 type Appearance = { color: string; layer: string; opacity?: number };
 export type DxfEntity =
@@ -23,10 +25,14 @@ function colorCode(color: string): number {
 
 /** AutoCAD 2004 ASCII DXF; coordinates and INSUNITS are millimetres. */
 export function writeDxf(entities: DxfEntity[], width: number, height: number): string {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error('A DXF page must have positive finite dimensions.');
+  }
   const lines: string[] = [];
   const pair = (code: number, value: string | number) => lines.push(String(code), typeof value === 'number' ? number(value) : value);
   let handle = 0x100;
   const nextHandle = () => (handle++).toString(16).toUpperCase();
+  const structure = createDxfStructure(nextHandle, width, height);
   const dashPatterns = new Map<string, { name: string; pattern: number[] }>();
   for (const entity of entities) if (entity.kind === 'polyline' && entity.dash?.some((n) => n > 0)) {
     const key = entity.dash.map((n) => number(n)).join(',');
@@ -34,7 +40,9 @@ export function writeDxf(entities: DxfEntity[], width: number, height: number): 
   }
   const appearance = (entity: Appearance) => {
     pair(5, nextHandle());
+    pair(330, structure.modelSpace);
     pair(100, 'AcDbEntity');
+    pair(67, 0); pair(410, 'Model');
     pair(8, entity.layer);
     // ACI 7 makes source black legible on either a white or black CAD canvas.
     const rgb = colorCode(entity.color);
@@ -43,38 +51,38 @@ export function writeDxf(entities: DxfEntity[], width: number, height: number): 
     else { pair(62, 256); pair(420, rgb); }
     if (entity.opacity !== undefined && entity.opacity < 1) pair(440, 0x02000000 | Math.round(Math.max(0, entity.opacity) * 255));
   };
-  pair(0, 'SECTION'); pair(2, 'HEADER');
-  pair(9, '$ACADVER'); pair(1, 'AC1018');
-  pair(9, '$INSUNITS'); pair(70, 4);
-  pair(9, '$MEASUREMENT'); pair(70, 1);
-  pair(9, '$EXTMIN'); pair(10, 0); pair(20, 0); pair(30, 0);
-  pair(9, '$EXTMAX'); pair(10, width); pair(20, height); pair(30, 0);
-  pair(0, 'ENDSEC');
+  structure.writeClasses(pair);
   pair(0, 'SECTION'); pair(2, 'TABLES');
-  pair(0, 'TABLE'); pair(2, 'LTYPE'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTable'); pair(70, 1 + dashPatterns.size);
-  pair(0, 'LTYPE'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTableRecord');
-  pair(100, 'AcDbLinetypeTableRecord'); pair(2, 'CONTINUOUS'); pair(70, 0);
-  pair(3, 'Solid line'); pair(72, 65); pair(73, 0); pair(40, 0);
+  structure.writeViewport(pair);
+  const ltypeTable = structure.beginTable(pair, 'LTYPE', 3 + dashPatterns.size);
+  for (const name of ['BYBLOCK', 'BYLAYER', 'CONTINUOUS']) {
+    structure.tableRecord(pair, 'LTYPE', ltypeTable, 'AcDbLinetypeTableRecord');
+    pair(2, name); pair(70, 0); pair(3, name === 'CONTINUOUS' ? 'Solid line' : '');
+    pair(72, 65); pair(73, 0); pair(40, 0);
+  }
   for (const { name, pattern: sourcePattern } of dashPatterns.values()) {
     const pattern = sourcePattern.length % 2 ? [...sourcePattern, ...sourcePattern] : sourcePattern;
-    pair(0, 'LTYPE'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTableRecord'); pair(100, 'AcDbLinetypeTableRecord');
+    structure.tableRecord(pair, 'LTYPE', ltypeTable, 'AcDbLinetypeTableRecord');
     pair(2, name); pair(70, 0); pair(3, 'Source PDF dash pattern'); pair(72, 65); pair(73, pattern.length);
     pair(40, pattern.reduce((sum, n) => sum + Math.abs(n), 0));
     pattern.forEach((length, index) => { pair(49, index % 2 ? -length : length); pair(74, 0); });
   }
   pair(0, 'ENDTAB');
   const layers = [...new Set(['0', ...entities.map((entity) => entity.layer)])];
-  pair(0, 'TABLE'); pair(2, 'LAYER'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTable'); pair(70, layers.length);
+  const layerTable = structure.beginTable(pair, 'LAYER', layers.length);
   for (const layer of layers) {
-    pair(0, 'LAYER'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTableRecord');
-    pair(100, 'AcDbLayerTableRecord'); pair(2, layer); pair(70, 0); pair(62, 7); pair(6, 'CONTINUOUS');
+    structure.tableRecord(pair, 'LAYER', layerTable, 'AcDbLayerTableRecord');
+    pair(2, layer); pair(70, 0); pair(62, 7); pair(6, 'CONTINUOUS');
+    pair(290, 1); pair(370, -3); pair(390, structure.normalPlotStyle);
   }
   pair(0, 'ENDTAB');
-  pair(0, 'TABLE'); pair(2, 'STYLE'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTable'); pair(70, 1);
-  pair(0, 'STYLE'); pair(5, nextHandle()); pair(100, 'AcDbSymbolTableRecord'); pair(100, 'AcDbTextStyleTableRecord');
+  const styleTable = structure.beginTable(pair, 'STYLE', 1);
+  const standardStyle = structure.tableRecord(pair, 'STYLE', styleTable, 'AcDbTextStyleTableRecord');
   pair(2, 'STANDARD'); pair(70, 0); pair(40, 0); pair(41, 1); pair(50, 0); pair(71, 0); pair(42, 2.5);
-  pair(3, 'txt'); pair(4, ''); pair(0, 'ENDTAB'); pair(0, 'ENDSEC');
-  pair(0, 'SECTION'); pair(2, 'BLOCKS'); pair(0, 'ENDSEC');
+  pair(3, 'txt.shx'); pair(4, ''); pair(0, 'ENDTAB');
+  structure.writeRemainingTables(pair, standardStyle);
+  pair(0, 'ENDSEC');
+  structure.writeBlocks(pair);
   pair(0, 'SECTION'); pair(2, 'ENTITIES');
   for (const entity of entities) {
     if (entity.kind === 'polyline') {
@@ -116,6 +124,24 @@ export function writeDxf(entities: DxfEntity[], width: number, height: number): 
       }
     }
   }
-  pair(0, 'ENDSEC'); pair(0, 'EOF');
-  return `${lines.join('\r\n')}\r\n`;
+  pair(0, 'ENDSEC');
+  structure.writeObjects(pair);
+  pair(0, 'EOF');
+  const body = lines.splice(0);
+  pair(0, 'SECTION'); pair(2, 'HEADER');
+  pair(9, '$ACADVER'); pair(1, 'AC1018');
+  pair(9, '$DWGCODEPAGE'); pair(3, 'ANSI_1252');
+  pair(9, '$HANDSEED'); pair(5, handle.toString(16).toUpperCase());
+  pair(9, '$INSUNITS'); pair(70, 4); pair(9, '$MEASUREMENT'); pair(70, 1);
+  pair(9, '$INSBASE'); pair(10, 0); pair(20, 0); pair(30, 0);
+  pair(9, '$EXTMIN'); pair(10, 0); pair(20, 0); pair(30, 0);
+  pair(9, '$EXTMAX'); pair(10, width); pair(20, height); pair(30, 0);
+  pair(9, '$LIMMIN'); pair(10, 0); pair(20, 0);
+  pair(9, '$LIMMAX'); pair(10, width); pair(20, height);
+  pair(9, '$TILEMODE'); pair(70, 1); pair(9, '$CTAB'); pair(1, 'Model');
+  pair(9, '$CLAYER'); pair(8, '0'); pair(9, '$CELTYPE'); pair(6, 'BYLAYER');
+  pair(9, '$TEXTSTYLE'); pair(7, 'STANDARD'); pair(9, '$CECOLOR'); pair(62, 256);
+  pair(9, '$LTSCALE'); pair(40, 1); pair(9, '$CELTSCALE'); pair(40, 1); pair(9, '$PSLTSCALE'); pair(70, 0);
+  pair(0, 'ENDSEC');
+  return `${lines.concat(body).join('\r\n')}\r\n`;
 }

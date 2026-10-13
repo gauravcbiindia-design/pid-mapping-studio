@@ -57,13 +57,15 @@ export async function buildPdfDxfPackage(
   const exported=reports.filter(report=>report.status==='exported').length;
   if(!exported)throw new Error(`No DXF pages were created. ${reports.map(r=>`PDF ${r.pdf}, page ${r.page}: ${r.warnings[0]}`).join(' ')}`);
   files.push({path:'CONVERSION_REPORT.json',content:encoder.encode(JSON.stringify({
-    format:'DXF',nativeDwg:false,autoCadWasRun:false,libraryReplacementApplied:false,scaleMultiplier:scale,
+    format:'DXF',dxfVersion:'AC1018',dxfStructure:'modelspace-layout-linked',nativeDwg:false,
+    autoCadWasRun:false,autoCadOpenVerified:false,libraryReplacementApplied:false,scaleMultiplier:scale,
     engineeringScaleVerified:false,pdfCompletenessVerified:false,sourceContentSanitized:false,pages:reports,
   },null,2))});
   files.push({path:'READ_ME.txt',content:encoder.encode(
     'PDF VECTOR TO DXF\nCopyright (c) 2026 gaurav.cbiindia.\n\n'+
     'Each exported PDF page has its own real ASCII DXF. No AutoCAD or DWT is required to create these files.\n'+
     'Open a DXF in AutoCAD and use ZOOM Extents. You can Save As DWG locally after reviewing it.\n\n'+
+    'The file includes Model/Paper Space block records, entity owner links, layouts, and an initial Model view. This is a compatibility target, not proof of an AutoCAD reopen test. Do not run a LISP/batch helper to open these DXF files. If AutoCAD rejects the file, use F2 to capture its full command history.\n\n'+
     'This is raw source vector geometry, not a Legends Library-standard reconstructed drawing. Raster images are not traced. Fonts, complex clipping and fill rules may differ. Read CONVERSION_REPORT.json before use.\n'+
     'A structurally valid DXF does not prove complete PDF content transfer. PDF decoding may skip malformed or unsupported appearance streams; compare every page against its source before acceptance.\n'+
     'Coordinates are millimetres at PDF paper size times the chosen scale multiplier. Verify with a known dimension before engineering use.\n'+

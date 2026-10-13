@@ -56,3 +56,66 @@ test('keeps green and blue true colours instead of treating their packed RGB val
   assert.match(dxf,/420\r\n65280/); assert.match(dxf,/420\r\n255/);
   assert.match(dxf,/440\r\n33554560/);
 });
+
+function records(dxf: string) {
+  const lines = dxf.trimEnd().split(/\r?\n/);
+  const result: { type: string; tags: [number, string][] }[] = [];
+  for (let i = 0; i < lines.length; i += 2) {
+    const code = Number(lines[i]), value = lines[i + 1];
+    if (code === 0) result.push({ type: value, tags: [] });
+    else result.at(-1)?.tags.push([code, value]);
+  }
+  return result;
+}
+
+test('writes complete Model/Paper Space ownership, layouts and resolvable database handles', () => {
+  const dxf = writeDxf([
+    {kind:'polyline',points:[{x:0,y:0},{x:10,y:10}],closed:false,lineWeight:10,color:'#000000',layer:'LINE'},
+    {kind:'text',text:'TEST',start:{x:1,y:1},end:{x:9,y:1},height:2,rotation:0,color:'#000000',layer:'TEXT'},
+    {kind:'hatch',loops:[[{x:0,y:0},{x:5,y:0},{x:5,y:5}]],color:'#00FF00',layer:'FILL'},
+  ],420,297);
+  const all = records(dxf);
+  const tag = (r: typeof all[number], code: number) => r.tags.find(t => t[0] === code)?.[1];
+  const blocks = all.filter(r => r.type === 'BLOCK_RECORD');
+  assert.equal(blocks.length, 2);
+  const model = blocks.find(r => tag(r, 2) === '*Model_Space')!;
+  const paper = blocks.find(r => tag(r, 2) === '*Paper_Space')!;
+  assert.ok(model && paper);
+  const layouts = all.filter(r => r.type === 'LAYOUT');
+  assert.equal(layouts.length, 2);
+  for (const block of blocks) {
+    const layout = layouts.find(r => tag(r, 5) === tag(block, 340));
+    assert.ok(layout);
+    assert.equal(layout.tags.filter(t => t[0] === 330).at(-1)?.[1], tag(block, 5));
+  }
+  for (const entity of all.filter(r => ['LWPOLYLINE','TEXT','HATCH'].includes(r.type))) {
+    assert.equal(tag(entity, 330), tag(model, 5));
+    assert.equal(tag(entity, 67), '0');
+    assert.equal(tag(entity, 410), 'Model');
+  }
+  const graph = all.filter(r => !['SECTION','ENDSEC','ENDTAB','EOF','CLASS'].includes(r.type));
+  const handles = graph.map(r => tag(r, r.type === 'DIMSTYLE' ? 105 : 5)).filter(Boolean) as string[];
+  assert.equal(new Set(handles).size, handles.length);
+  const known = new Set(handles);
+  for (const record of graph) {
+    for (const [code, value] of record.tags) {
+      if ([330,340,350,390].includes(code) && value !== '0') assert.ok(known.has(value), `Unresolved ${code} reference`);
+    }
+  }
+  const seed = dxf.match(/\$HANDSEED\r\n5\r\n([A-F0-9]+)/)?.[1];
+  assert.ok(seed);
+  assert.ok(parseInt(seed,16) > Math.max(...handles.map(h => parseInt(h,16))));
+});
+
+test('opens the Model layout with a fitted active view and rejects invalid page dimensions', () => {
+  const dxf = writeDxf([],420,297);
+  assert.match(dxf,/\$TILEMODE\r\n70\r\n1/);
+  assert.match(dxf,/\$CTAB\r\n1\r\nModel/);
+  assert.match(dxf,/\$INSBASE\r\n10\r\n0\r\n20\r\n0\r\n30\r\n0/);
+  const active = records(dxf).find(r => r.type === 'VPORT')!;
+  assert.equal(active.tags.find(t => t[0] === 12)?.[1], '210');
+  assert.equal(active.tags.find(t => t[0] === 22)?.[1], '148.5');
+  assert.ok(Number(active.tags.find(t => t[0] === 40)?.[1]) > 297);
+  assert.throws(() => writeDxf([],0,297), /positive finite/);
+  assert.throws(() => writeDxf([],420,Infinity), /positive finite/);
+});
