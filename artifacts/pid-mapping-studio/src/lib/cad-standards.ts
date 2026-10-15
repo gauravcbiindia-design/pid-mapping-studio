@@ -1,3 +1,5 @@
+import { parseValveMaskBoundary } from './valve-mask';
+
 export type CadStandardCategory =
   | 'titleBlock'
   | 'layer'
@@ -348,6 +350,47 @@ export function approveCadReviewCandidate(
   ) {
     throw new Error('A fallback category and locally extracted block file are required before approving this symbol.');
   }
+  if (
+    candidate.item.category === 'symbol' &&
+    candidate.item.sourceKind === 'extracted-dwg' &&
+    (fields.find((field) => field.label === 'Fallback category')?.value.trim().toLowerCase() === 'valve')
+  ) {
+    const mask = fields.find((field) => field.label === 'Wipeout mask boundary')?.value ?? '';
+    try {
+      parseValveMaskBoundary(mask);
+    } catch (error) {
+      throw new Error(
+        `A reviewed valve-body mask outline is required before approving this valve. ${
+          error instanceof Error ? error.message : 'Check the X,Y point list.'
+        }`,
+      );
+    }
+  }
+  if (candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg') {
+    const targetLayer = fields.find((field) => field.label === 'Target CAD layer')?.value.trim() ?? '';
+    const sourceDiscipline = fields.find((field) => field.label === 'Source discipline')?.value.trim() ?? '';
+    const targetItems = targetScope === 'company'
+      ? library.companyItems
+      : [
+          ...(candidate.projectId ? library.projects[candidate.projectId]?.items ?? [] : []),
+          ...library.companyItems,
+        ];
+    const compatibleLayer = targetItems.some((item) => {
+      if (item.category !== 'layer' || item.sourceKind !== 'extracted-dwg' ||
+        item.reviewStatus !== 'reviewed') return false;
+      const layerName = item.fields.find((field) => field.label === 'CAD name')?.value.trim() ?? '';
+      const layerDiscipline = item.fields.find((field) => field.label === 'Source discipline')?.value.trim() ?? '';
+      const disciplineMatches = sourceDiscipline === 'Shared'
+        ? layerDiscipline === 'Shared'
+        : layerDiscipline === 'Shared' || layerDiscipline === sourceDiscipline;
+      return targetLayer && targetLayer.toUpperCase() !== '0' &&
+        layerName.toLowerCase() === targetLayer.toLowerCase() &&
+        disciplineMatches;
+    });
+    if (!compatibleLayer) {
+      throw new Error('Approve a compatible non-zero CAD layer before approving this symbol. Layer 0 cannot be used for block placement.');
+    }
+  }
 
   const reviewed: CadLibraryItem = {
     ...candidate.item,
@@ -392,6 +435,68 @@ export function approveCadReviewCandidate(
     reviewCandidates,
     auditTrail: [
       newAuditEntry('Source mapping approved', `${candidate.item.category} mapping ${candidate.item.name} was approved to ${scopeLabel}.`, candidate.projectName),
+      ...library.auditTrail,
+    ],
+  };
+}
+
+export function updateReviewedCadLibraryItem(
+  library: CadStandardsLibrary,
+  itemId: string,
+  additionalFields: CadLibraryField[],
+): CadStandardsLibrary {
+  const companyItem = library.companyItems.find((item) => item.id === itemId);
+  const projectEntry = Object.entries(library.projects).find(([, project]) =>
+    project.items.some((item) => item.id === itemId),
+  );
+  const current = companyItem ?? projectEntry?.[1].items.find((item) => item.id === itemId);
+  if (!current || current.reviewStatus !== 'reviewed') {
+    throw new Error('The selected approved CAD mapping is no longer available.');
+  }
+  if (current.category !== 'symbol' || current.sourceKind !== 'extracted-dwg') {
+    throw new Error('Only reviewed extracted symbol mappings can be updated here.');
+  }
+  const fields = [
+    ...current.fields.filter((field) =>
+      !additionalFields.some((extra) => extra.label === field.label),
+    ),
+    ...additionalFields,
+  ];
+  if (fields.find((field) => field.label === 'Fallback category')?.value.trim().toLowerCase() === 'valve') {
+    try {
+      parseValveMaskBoundary(fields.find((field) => field.label === 'Wipeout mask boundary')?.value ?? '');
+    } catch (error) {
+      throw new Error(
+        `A reviewed valve-body mask outline is required. ${
+          error instanceof Error ? error.message : 'Check the X,Y point list.'
+        }`,
+      );
+    }
+  }
+
+  const updated = { ...current, fields };
+  const companyItems = companyItem
+    ? library.companyItems.map((item) => item.id === itemId ? updated : item)
+    : library.companyItems;
+  const projects = projectEntry
+    ? {
+        ...library.projects,
+        [projectEntry[0]]: {
+          ...projectEntry[1],
+          items: projectEntry[1].items.map((item) => item.id === itemId ? updated : item),
+        },
+      }
+    : library.projects;
+  return {
+    ...library,
+    companyItems,
+    projects,
+    auditTrail: [
+      newAuditEntry(
+        'Reviewed valve mask updated',
+        `The approved symbol mapping ${current.name} received a reviewed Wipeout mask outline.`,
+        current.projectName,
+      ),
       ...library.auditTrail,
     ],
   };

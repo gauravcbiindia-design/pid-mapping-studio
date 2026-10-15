@@ -4,7 +4,19 @@ import { getLocalCadSourceContent } from '@/lib/local-cad-sources';
 
 const extractorLisp = String.raw`; Local CAD standards extractor. Run in Windows AutoCAD on each source drawing.
 (vl-load-com)
-(defun c:PIDEXTRACTSTANDARDS (/ output alias handle table row kind name detail flags index assetName assetPath fontName bigFontName)
+(defun pid:style-font-for-handle (target / styleRow found)
+  (setq styleRow (tblnext "STYLE" T))
+  (while (and styleRow (not found))
+    (if (and (cdr (assoc 5 styleRow))
+             (= (strcase (cdr (assoc 5 styleRow))) (strcase target)))
+      (setq found (cdr (assoc 3 styleRow)))
+    )
+    (setq styleRow (tblnext "STYLE"))
+  )
+  found
+)
+
+(defun c:PIDEXTRACTSTANDARDS (/ output alias handle table row kind name detail flags index assetName assetPath fontName bigFontName patternValues patternFlags complexData shapeFonts description)
   (setq alias (vl-filename-base (getvar "DWGNAME")))
   (if (= alias "") (setq alias "SOURCE_LOCAL"))
   (setq output (getfiled "Save extracted CAD standards locally" (strcat (getvar "DWGPREFIX") "CAD_STANDARDS.tsv") "tsv" 1))
@@ -39,6 +51,7 @@ const extractorLisp = String.raw`; Local CAD standards extractor. Run in Windows
                     (cond
                       ((= table "LAYER")
                         (strcat "color=" (itoa (abs (cdr (assoc 62 row))))
+                                ";lineweight=" (itoa (if (cdr (assoc 370 row)) (cdr (assoc 370 row)) -3))
                                 ";linetype=" (if (cdr (assoc 6 row)) (cdr (assoc 6 row)) "BYLAYER")))
                       ((= table "BLOCK")
                         (strcat "flags=" (itoa (if flags flags 0))))
@@ -50,8 +63,45 @@ const extractorLisp = String.raw`; Local CAD standards extractor. Run in Windows
                                 ";width=" (rtos (if (cdr (assoc 41 row)) (cdr (assoc 41 row)) 1.0) 2 4)
                                 ";oblique=" (rtos (if (cdr (assoc 50 row)) (cdr (assoc 50 row)) 0.0) 2 4)))
                       ((= table "LTYPE")
-                        (strcat "description=" (if (cdr (assoc 3 row)) (cdr (assoc 3 row)) "")
-                                ";patternLength=" (rtos (if (cdr (assoc 40 row)) (cdr (assoc 40 row)) 0.0) 2 4)))
+                        (setq description
+                          (vl-string-translate
+                            (strcat (chr 9) (chr 10) (chr 13) ";")
+                            "    "
+                            (if (cdr (assoc 3 row)) (cdr (assoc 3 row)) "")
+                          )
+                        )
+                        (setq patternValues
+                          (mapcar '(lambda (entry) (cdr entry))
+                            (vl-remove-if-not '(lambda (entry) (= (car entry) 49)) row)
+                          )
+                        )
+                        (setq patternFlags
+                          (mapcar '(lambda (entry) (if (cdr entry) (cdr entry) 0))
+                            (vl-remove-if-not '(lambda (entry) (= (car entry) 74)) row)
+                          )
+                        )
+                        (setq complexData
+                          (vl-remove-if-not
+                            '(lambda (entry) (member (car entry) '(9 40 44 45 46 49 50 73 74 75 340)))
+                            row
+                          )
+                        )
+                        (setq shapeFonts
+                          (mapcar
+                            '(lambda (entry)
+                              (cons (cdr entry) (pid:style-font-for-handle (cdr entry)))
+                            )
+                            (vl-remove-if-not '(lambda (entry) (= (car entry) 340)) row)
+                          )
+                        )
+                        (strcat
+                          "description=" description
+                          ";patternLength=" (rtos (if (cdr (assoc 40 row)) (cdr (assoc 40 row)) 0.0) 2 8)
+                          ";pattern=" (vl-prin1-to-string patternValues)
+                          ";patternFlags=" (vl-prin1-to-string patternFlags)
+                          ";complexData=" (vl-prin1-to-string complexData)
+                          ";shapeFonts=" (vl-prin1-to-string shapeFonts)
+                        ))
                       ((= table "DIMSTYLE")
                         (strcat "scale=" (rtos (if (cdr (assoc 40 row)) (cdr (assoc 40 row)) 1.0) 2 4)
                                 ";arrowSize=" (rtos (if (cdr (assoc 41 row)) (cdr (assoc 41 row)) 0.0) 2 4)
@@ -116,7 +166,8 @@ export async function buildLocalCadExtractorPackage(sources: LocalCadSource[]): 
         `2. Open one SOURCE_###.dwg at a time. In AutoCAD, run APPLOAD and load EXTRACT_CAD_STANDARDS.lsp.\n` +
         `3. Run PIDEXTRACTSTANDARDS and save the TSV locally. The script reads the neutral source drawing name automatically.\n` +
         `4. The script writes one neutral *_BLOCK_####.dwg for each source block, alongside the TSV. Zip the TSV and generated block DWGs together, then import that ZIP into the matching discipline's CAD source library.\n` +
-        `5. Do not treat block names as approved mappings until a reviewer approves them. The script reads drawing tables only; it does not modify source drawings.\n`,
+        `5. Do not treat block names as approved mappings until a reviewer approves them. The script reads drawing tables only; it does not modify source drawings.\n` +
+        `6. Complex shape-based linetypes include their referenced SHX font. AutoCAD must be able to find that font in its support paths; the runner stops if it is missing instead of replacing the line style.\n`,
       ),
     },
   ];

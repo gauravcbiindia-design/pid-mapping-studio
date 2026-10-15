@@ -10,18 +10,22 @@ import {
 import type {
   CadPurpose, CadReviewCandidate, CadSheetSize, CadStandardCategory, CadStandardsLibrary,
 } from '@/lib/cad-standards';
+import { parseValveMaskBoundary, type ValveMaskPoint } from '@/lib/valve-mask';
 import './standards-library-page.css';
 
 type Props = {
   library: CadStandardsLibrary;
   reviewCandidates: CadReviewCandidate[];
-  onApproveCompany(candidateId: string, additionalFields?: { label: string; value: string }[]): void;
-  onApproveProject(candidateId: string, additionalFields?: { label: string; value: string }[]): void;
-  onDismiss(candidateId: string): void;
+  onApproveCompany(candidateId: string, additionalFields?: { label: string; value: string }[]): boolean;
+  onApproveProject(candidateId: string, additionalFields?: { label: string; value: string }[]): boolean;
+  onUpdateReviewedItem(itemId: string, additionalFields: { label: string; value: string }[]): boolean;
+  onDismiss(candidateId: string): boolean;
   onSetCompanyDefault(purpose: CadPurpose, size: CadSheetSize): void;
   onSetProjectDefault(projectId: string, purpose: CadPurpose, size: CadSheetSize): void;
   storageNotice?: string;
   readOnly?: boolean;
+  reviewOnly?: boolean;
+  backHref?: string;
 };
 
 type LibraryTab = 'company' | 'projects';
@@ -51,7 +55,7 @@ function sourceAlias(candidate: CadReviewCandidate, candidates: CadReviewCandida
     const groups = [...new Set(candidates
       .filter((item) => item.proposedScope === 'company')
       .map((item) => item.sourceGroup))].sort();
-    return `Company source ${String(groups.indexOf(candidate.sourceGroup) + 1).padStart(2, '0')}`;
+    return `Legends Library source ${String(groups.indexOf(candidate.sourceGroup) + 1).padStart(2, '0')}`;
   }
   return 'Unclassified source';
 }
@@ -60,9 +64,92 @@ function projectAlias(projectId: string, projectIds: string[]) {
   return `Project ${String(projectIds.indexOf(projectId) + 1).padStart(2, '0')}`;
 }
 
+function fieldValue(fields: { label: string; value: string }[], label: string) {
+  return fields.find((field) => field.label === label)?.value.trim() ?? '';
+}
+
+function ValveMaskEditor({
+  value, disabled, onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange(value: string): void;
+}) {
+  let points: ValveMaskPoint[] | null = null;
+  let error = '';
+  try {
+    points = parseValveMaskBoundary(value);
+  } catch (cause) {
+    error = cause instanceof Error ? cause.message : 'Enter a valid X,Y outline.';
+  }
+  const xs = points?.map(([x]) => x) ?? [];
+  const ys = points?.map(([, y]) => y) ?? [];
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const width = maxX - minX || 1;
+  const height = maxY - minY || 1;
+  const padding = 9;
+  const previewPoints = points?.map(([x, y]) =>
+    `${padding + ((x - minX) / width) * (160 - padding * 2)},${90 - padding - ((y - minY) / height) * (90 - padding * 2)}`,
+  ).join(' ');
+  return (
+    <label className="candidate-fallback-category valve-mask-editor">
+      <span>Valve-body Wipeout outline <small>Reviewed block-local X,Y points; do not include pipe tails. Separate points with semicolons.</small></span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="x,y; x,y; x,y; …"
+        aria-label="Valve-body Wipeout outline points"
+        rows={3}
+        disabled={disabled}
+      />
+      <small className="candidate-layer-help">Enter vertices in order using the valve block’s local drawing units. The small preview shows only the mask contour, not the source CAD block.</small>
+      {points && previewPoints ? (
+        <svg className="valve-mask-preview" viewBox="0 0 160 90" role="img" aria-label="Preview of the saved valve mask outline">
+          <polygon points={previewPoints} />
+        </svg>
+      ) : (
+        <small className="candidate-layer-help">{error}</small>
+      )}
+      <small className="candidate-layer-help">The runner masks only inside this polygon, leaves the underlying Pipe Run continuous, and draws the valve block on top.</small>
+    </label>
+  );
+}
+
+function placementLayerOptions(
+  candidate: CadReviewCandidate,
+  library: CadStandardsLibrary,
+): string[] {
+  const discipline = fieldValue(candidate.item.fields, 'Source discipline');
+  if (discipline !== 'PFD' && discipline !== 'P&ID' && discipline !== 'Shared') return [];
+  const targetScope = candidate.proposedScope === 'company' ? 'company' : 'project';
+  const projectLayers = targetScope === 'project' && candidate.projectId
+    ? library.projects[candidate.projectId]?.items ?? []
+    : [];
+  const reviewedLayers = [
+    ...projectLayers,
+    ...library.companyItems,
+  ].filter((item) => {
+    if (item.category !== 'layer' || item.sourceKind !== 'extracted-dwg' ||
+      item.reviewStatus !== 'reviewed') return false;
+    const itemDiscipline = fieldValue(item.fields, 'Source discipline');
+    return discipline === 'Shared'
+      ? itemDiscipline === 'Shared'
+      : itemDiscipline === 'Shared' || itemDiscipline === discipline;
+  });
+  const names = reviewedLayers
+    .map((item) => fieldValue(item.fields, 'CAD name'))
+    .filter((name) => name && name.toUpperCase() !== '0');
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}
+
 export default function StandardsLibraryPage({
   library, reviewCandidates, onApproveCompany, onApproveProject, onDismiss,
+  onUpdateReviewedItem,
   onSetCompanyDefault, onSetProjectDefault, storageNotice = '', readOnly = false,
+  reviewOnly = false, backHref = '/',
 }: Props) {
   const [tab, setTab] = useState<LibraryTab>('company');
   const [query, setQuery] = useState('');
@@ -71,6 +158,9 @@ export default function StandardsLibraryPage({
   const [candidatePage, setCandidatePage] = useState(0);
   const [actionMessage, setActionMessage] = useState('');
   const [fallbackCategories, setFallbackCategories] = useState<Record<string, string>>({});
+  const [targetLayers, setTargetLayers] = useState<Record<string, string>>({});
+  const [valveMaskBoundaries, setValveMaskBoundaries] = useState<Record<string, string>>({});
+  const [approvedValveMasks, setApprovedValveMasks] = useState<Record<string, string>>({});
   const pageSize = 20;
   const projectIds = useMemo(() => Object.keys(library.projects).sort(), [library.projects]);
   const selectedProjectId = projectIds.includes(activeProjectId) ? activeProjectId : (projectIds[0] ?? '');
@@ -80,15 +170,65 @@ export default function StandardsLibraryPage({
   const approveWithCategory = (candidate: CadReviewCandidate, target: 'company' | 'project') => {
     const fallbackCategory = (fallbackCategories[candidate.id] ??
       candidate.item.fields.find((field) => field.label === 'Fallback category')?.value ?? '').trim();
+    const targetLayer = targetLayers[candidate.id] ??
+      candidate.item.fields.find((field) => field.label === 'Target CAD layer')?.value ?? '';
     if (candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg' && !fallbackCategory) {
       setActionMessage('Enter the real equipment category (such as pump or valve) before approving an extracted block.');
       return;
     }
+    if (candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg' &&
+      !placementLayerOptions(candidate, library).includes(targetLayer)) {
+      setActionMessage(placementLayerOptions(candidate, library).length
+        ? 'Choose an approved non-zero CAD layer for this block before approving it.'
+        : 'Approve a matching Equipment, Instrument, or other placement layer first. Layer 0 cannot be used for block placement.');
+      return;
+    }
+    const valveMaskBoundary = valveMaskBoundaries[candidate.id] ??
+      candidate.item.fields.find((field) => field.label === 'Wipeout mask boundary')?.value ?? '';
+    if (fallbackCategory.toLowerCase() === 'valve') {
+      try {
+        parseValveMaskBoundary(valveMaskBoundary);
+      } catch (error) {
+        setActionMessage(error instanceof Error ? error.message : 'Enter and review a valve-body Wipeout outline before approval.');
+        return;
+      }
+    }
     setActionMessage('');
     const fields = candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg'
-      ? [{ label: 'Fallback category', value: fallbackCategory }]
+      ? [
+          { label: 'Fallback category', value: fallbackCategory },
+          { label: 'Target CAD layer', value: targetLayer },
+          ...(fallbackCategory.toLowerCase() === 'valve'
+            ? [{ label: 'Wipeout mask boundary', value: valveMaskBoundary }]
+            : []),
+        ]
       : undefined;
-    (target === 'company' ? onApproveCompany : onApproveProject)(candidate.id, fields);
+    const saved = (target === 'company' ? onApproveCompany : onApproveProject)(candidate.id, fields);
+    if (saved) {
+      setActionMessage(target === 'company'
+        ? 'Approved and added to the Legends Library.'
+        : 'Approved and added to the project library.');
+    }
+  };
+
+  const dismissCandidate = (candidateId: string) => {
+    if (onDismiss(candidateId)) {
+      setActionMessage('Record dismissed from the review queue.');
+    }
+  };
+
+  const saveApprovedValveMask = (itemId: string, fields: { label: string; value: string }[]) => {
+    const value = approvedValveMasks[itemId] ??
+      fields.find((field) => field.label === 'Wipeout mask boundary')?.value ?? '';
+    try {
+      parseValveMaskBoundary(value);
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : 'Enter a valid valve-body mask outline.');
+      return;
+    }
+    if (onUpdateReviewedItem(itemId, [{ label: 'Wipeout mask boundary', value }])) {
+      setActionMessage('Reviewed valve-body mask saved to the Legends Library.');
+    }
   };
 
   const filteredCandidates = useMemo(() => {
@@ -152,25 +292,30 @@ export default function StandardsLibraryPage({
   };
 
   return (
-    <main className="standards-page">
+    <main className={`standards-page${reviewOnly ? ' standards-review-only' : ''}`}>
       <header className="standards-topbar">
-        <Link href="/" className="standards-brand" data-testid="link-standards-home"><span className="standards-mark">PM</span><span>Mapping Studio<small>Drafting standards / browser-local</small></span></Link>
+        <Link href={reviewOnly ? backHref : '/'} className="standards-brand" data-testid="link-standards-home"><span className="standards-mark">PM</span><span>Mapping Studio<small>{reviewOnly ? 'Legends Library / review' : 'Drafting standards / browser-local'}</small></span></Link>
          <div className="standards-top-meta"><span className="standards-local"><i />{readOnly ? 'Read only · storage issue' : 'Browser-local'}</span><span className="standards-version">LIBRARY · 1.0</span></div>
       </header>
 
       <div className="standards-content">
         <section className="standards-intro">
           <div>
-            <div className="standards-eyebrow">Standards library <span>/</span> human review</div>
-            <h1>Drafting standards</h1>
-            <p>Inspect source-derived CAD values before they become defaults. Project choices stay separate from the Legends Library.</p>
+            {reviewOnly && <Link className="standards-return" href={backHref}>← Back to {backHref.endsWith('/pfd') ? 'PFD' : 'P&ID'} workspace</Link>}
+            <div className="standards-eyebrow">{reviewOnly ? 'Legends Library' : 'Standards library'} <span>/</span> human review</div>
+            <h1>{reviewOnly ? 'Review extracted standards' : 'Drafting standards'}</h1>
+            <p>{reviewOnly
+              ? 'Check extracted blocks, layers, text styles, and line types. Nothing becomes part of the Legends Library until you approve it.'
+              : 'Inspect source-derived CAD values before they become defaults. Project choices stay separate from the Legends Library.'}</p>
           </div>
           <div className="standards-local-seal"><HardDrive size={15} /><span>LOCAL ONLY<small>Nothing is uploaded or shared</small></span></div>
         </section>
 
         <div className="standards-trust-note">
           <ShieldCheck size={16} />
-          <span><strong>Review before use.</strong> Source-derived values remain unapproved until you choose a scope. Company/client identifiers and source file names are hidden here.</span>
+          <span><strong>Review before use.</strong> {reviewOnly
+            ? 'Each extracted record remains pending until you approve it to the Legends Library or dismiss it. Source filenames are hidden.'
+            : 'Source-derived values remain unapproved until you choose a scope. Company/client identifiers and source file names are hidden here.'}</span>
           <span className="standards-schema">SCHEMA {library.schemaVersion}</span>
         </div>
         {storageNotice && <div className="standards-storage-banner" role="alert">{storageNotice}</div>}
@@ -188,40 +333,94 @@ export default function StandardsLibraryPage({
               <span className="standards-count">{pending.length} pending</span>
             </div>
             <div className="standards-controls">
-              <label className="standards-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search CAD field values…" aria-label="Search standards" /></label>
-              <label className="standards-filter"><SlidersHorizontal size={13} /><select aria-label="Filter by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as CadStandardCategory | 'all')}><option value="all">All categories</option>{Object.entries(categoryNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><ChevronDown size={13} /></label>
+              <label className="standards-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search CAD field values…" aria-label="Search standards" data-testid="input-standards-search" /></label>
+              <label className="standards-filter"><SlidersHorizontal size={13} /><select aria-label="Filter by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as CadStandardCategory | 'all')} data-testid="select-standards-category"><option value="all">All categories</option>{Object.entries(categoryNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><ChevronDown size={13} /></label>
             </div>
+            {actionMessage && <div className="standards-action-note" role="status">{actionMessage}</div>}
             <div className="standards-candidate-list">
               {visibleCandidates.map((candidate) => (
                 <article className="candidate-card" key={candidate.id} data-testid={`candidate-${candidate.id}`}>
                   <div className="candidate-top">
-                    <div className="candidate-category"><span className="candidate-glyph"><Layers3 size={15} /></span><span><strong>{categoryAlias(candidate.item.category)}</strong><small>{sourceAlias(candidate, reviewCandidates)} · {candidate.proposedScope === 'project' ? 'Project proposal' : candidate.proposedScope === 'company' ? 'Legends Library proposal' : 'Scope not classified'}</small></span></div>
+                    <div className="candidate-category"><span className="candidate-glyph"><Layers3 size={15} /></span><span><strong>{categoryAlias(candidate.item.category)}</strong><small>{sourceAlias(candidate, reviewCandidates)} · {candidate.proposedScope === 'project' ? 'Project proposal' : candidate.proposedScope === 'company' ? 'Pending review' : 'Scope not classified'}</small></span></div>
                     <span className="candidate-status"><i />Needs review</span>
                   </div>
                   <div className="candidate-fields" aria-label={`${categoryAlias(candidate.item.category)} CAD standard values`}>
                     {candidate.item.fields.map((field, index) => <div className="candidate-field" key={`${field.label}-${index}`}><span>{field.label}</span><strong>{field.value || '—'}</strong></div>)}
                   </div>
                   {candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg' && (
-                    <label className="candidate-fallback-category">
-                      <span>Fallback category <small>Required for safe same-category substitution</small></span>
-                      <input value={fallbackCategories[candidate.id] ??
-                        candidate.item.fields.find((field) => field.label === 'Fallback category')?.value ?? ''}
-                        onChange={(event) => setFallbackCategories((current) => ({
-                          ...current,
-                          [candidate.id]: event.target.value,
-                        }))}
-                        placeholder="For example: pump, valve, or instrument"
-                        aria-label={`Fallback category for ${candidate.item.name}`} />
-                    </label>
+                    <>
+                      <label className="candidate-fallback-category">
+                        <span>Fallback category <small>Required for safe same-category substitution</small></span>
+                        <input value={fallbackCategories[candidate.id] ??
+                          candidate.item.fields.find((field) => field.label === 'Fallback category')?.value ?? ''}
+                          onChange={(event) => {
+                            setActionMessage('');
+                            setFallbackCategories((current) => ({
+                              ...current,
+                              [candidate.id]: event.target.value,
+                            }));
+                          }}
+                          placeholder="For example: pump, valve, or instrument"
+                          aria-label={`Fallback category for ${candidate.item.name}`} />
+                      </label>
+                      {(fallbackCategories[candidate.id] ??
+                        candidate.item.fields.find((field) => field.label === 'Fallback category')?.value ?? '')
+                        .trim().toLowerCase() === 'valve' && (
+                        <ValveMaskEditor
+                          value={valveMaskBoundaries[candidate.id] ??
+                            candidate.item.fields.find((field) => field.label === 'Wipeout mask boundary')?.value ?? ''}
+                          disabled={readOnly}
+                          onChange={(value) => {
+                            setActionMessage('');
+                            setValveMaskBoundaries((current) => ({ ...current, [candidate.id]: value }));
+                          }}
+                        />
+                      )}
+                      <label className="candidate-fallback-category">
+                        <span>Target CAD layer <small>Actual approved layer; layer 0 is not allowed</small></span>
+                        <select
+                          value={targetLayers[candidate.id] ??
+                            candidate.item.fields.find((field) => field.label === 'Target CAD layer')?.value ?? ''}
+                          onChange={(event) => {
+                            setActionMessage('');
+                            setTargetLayers((current) => ({
+                              ...current,
+                              [candidate.id]: event.target.value,
+                            }));
+                          }}
+                          aria-label={`Target CAD layer for ${candidate.item.name}`}
+                          disabled={readOnly || placementLayerOptions(candidate, library).length === 0}
+                        >
+                          <option value="">
+                            {placementLayerOptions(candidate, library).length
+                              ? 'Select an approved CAD layer…'
+                              : 'Approve a compatible layer first'}
+                          </option>
+                          {placementLayerOptions(candidate, library).map((name) =>
+                            <option value={name} key={name}>{name}</option>)}
+                        </select>
+                        <small className="candidate-layer-help">
+                          {placementLayerOptions(candidate, library).length
+                            ? 'The AutoCAD runner will put the inserted block reference on this layer.'
+                            : 'Review and approve the matching source layer first. No layer is guessed automatically.'}
+                        </small>
+                        <small className="candidate-layer-help">
+                          Stated Legends layers: equipment uses EQUIP or f_EQUIP; instruments use f_Inst. Extract and approve the matching layer before it appears here.
+                        </small>
+                      </label>
+                    </>
                   )}
                   <div className="candidate-actions">
                      <span className="candidate-scope-note">{candidate.proposedScope === 'project' ? 'Approve into isolated project library' : candidate.proposedScope === 'company' ? 'Approve to the Legends Library' : 'Unclassified source · project-only approval'}</span>
-                     {candidate.proposedScope === 'company' ? (
-                        <button className="btn primary" onClick={() => approveWithCategory(candidate, 'company')} disabled={readOnly} data-testid={`button-approve-company-${candidate.id}`}><Check size={14} />Approve to Legends Library</button>
-                     ) : (
-                        <button className="btn primary" onClick={() => approveWithCategory(candidate, 'project')} disabled={readOnly} data-testid={`button-approve-project-${candidate.id}`}><Check size={14} />Approve to project</button>
-                     )}
-                     <button className="btn subtle" onClick={() => onDismiss(candidate.id)} disabled={readOnly} data-testid={`button-dismiss-${candidate.id}`}>Dismiss</button>
+                      {(() => {
+                        const needsLayer = candidate.item.category === 'symbol' && candidate.item.sourceKind === 'extracted-dwg';
+                        return candidate.proposedScope === 'company' ? (
+                          <button className="btn primary" onClick={() => approveWithCategory(candidate, 'company')} disabled={readOnly} title={needsLayer && placementLayerOptions(candidate, library).length === 0 ? 'Approve a matching non-zero layer first.' : undefined} data-testid={`button-approve-company-${candidate.id}`}><Check size={14} />Approve to Legends Library</button>
+                        ) : (
+                          <button className="btn primary" onClick={() => approveWithCategory(candidate, 'project')} disabled={readOnly} title={needsLayer && placementLayerOptions(candidate, library).length === 0 ? 'Approve a matching non-zero layer first.' : undefined} data-testid={`button-approve-project-${candidate.id}`}><Check size={14} />Approve to project</button>
+                        );
+                      })()}
+                     <button className="btn subtle" onClick={() => dismissCandidate(candidate.id)} disabled={readOnly} data-testid={`button-dismiss-${candidate.id}`}>Dismiss</button>
                   </div>
                 </article>
               ))}
@@ -245,7 +444,7 @@ export default function StandardsLibraryPage({
             <footer className="standards-list-foot"><span>CAD field values only</span><span>Source labels anonymized</span></footer>
           </section>
 
-          <aside className="standards-side">
+          {!reviewOnly && <aside className="standards-side">
             <section className="defaults-panel panel">
               <div className="standards-panel-head">
                 <div><span className="standards-kicker">ACTIVE CONFIGURATION</span><h2><SlidersHorizontal size={16} />Sheet-size defaults</h2></div>
@@ -276,7 +475,6 @@ export default function StandardsLibraryPage({
                   </div>;
                 })}
               </div>
-              {actionMessage && <div className="standards-action-note" role="status">{actionMessage}</div>}
               <div className="defaults-note"><ShieldCheck size={14} /><span>Project selections change only that project. Legends Library defaults remain unchanged.</span></div>
             </section>
 
@@ -289,14 +487,40 @@ export default function StandardsLibraryPage({
                 {visibleItems.map((item) => <article className="approved-item" key={item.id}>
                   <div className="approved-item-head"><span className="approved-glyph"><Check size={13} /></span><div><strong>{categoryAlias(item.category)}</strong><small>{tab === 'company' ? 'Legends Library standard' : `${projectAlias(selectedProjectId, projectIds)} · project-only`}</small></div></div>
                   <div className="approved-fields">{item.fields.map((field, index) => <div key={`${field.label}-${index}`}><span>{field.label}</span><strong>{field.value || '—'}</strong></div>)}</div>
+                  {item.category === 'symbol' &&
+                    item.sourceKind === 'extracted-dwg' &&
+                    fieldValue(item.fields, 'Fallback category').toLowerCase() === 'valve' && (
+                      <>
+                        <ValveMaskEditor
+                          value={approvedValveMasks[item.id] ??
+                            item.fields.find((field) => field.label === 'Wipeout mask boundary')?.value ?? ''}
+                          disabled={readOnly}
+                          onChange={(value) => {
+                            setActionMessage('');
+                            setApprovedValveMasks((current) => ({ ...current, [item.id]: value }));
+                          }}
+                        />
+                        <div className="approved-mask-actions">
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={readOnly}
+                            onClick={() => saveApprovedValveMask(item.id, item.fields)}
+                            data-testid={`button-save-valve-mask-${item.id}`}
+                          >
+                            <Check size={13} />Save reviewed outline
+                          </button>
+                        </div>
+                      </>
+                    )}
                 </article>)}
                 {!visibleItems.length && <div className="approved-empty"><span className="empty-seal"><Layers3 size={18} /></span><strong>{tab === 'company' ? 'No approved Legends Library standards' : 'No standards in this project'}</strong><small>{tab === 'company' ? 'Review and approve source mappings to build the Legends Library.' : 'Project-approved standards remain isolated from Legends Library defaults.'}</small></div>}
               </div>
               <footer className="library-foot"><span>Visible values are standards fields</span><span>Descriptions hidden</span></footer>
             </section>
-          </aside>
+          </aside>}
         </div>
-        <footer className="standards-page-foot"><span>LOCAL-FIRST ENGINEERING WORKSPACE</span><span>Legends Library and project standards are reviewed separately</span></footer>
+        <footer className="standards-page-foot"><span>LOCAL-FIRST ENGINEERING WORKSPACE</span><span>{reviewOnly ? 'Only approved mappings are offered to the CAD runner' : 'Legends Library and project standards are reviewed separately'}</span></footer>
       </div>
     </main>
   );

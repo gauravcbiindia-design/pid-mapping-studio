@@ -1,0 +1,779 @@
+{
+  "schemaVersion": "1.0.0",
+  "sourceLabel": "Uploaded legend drawing",
+  "items": [
+    {
+      "id": "SYM_001",
+      "name": "AGITATOR",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 8,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_002",
+      "name": "AIR COOLER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_003",
+      "name": "AIR COOLER · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 8,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_004",
+      "name": "AIR COOLER · variant 3",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 8,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_005",
+      "name": "BALL VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_006",
+      "name": "CENTRIFUGAL BLOWER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 7,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_007",
+      "name": "CENTRIFUGAL COMPRESSOR",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_008",
+      "name": "CHECK VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_009",
+      "name": "DESUPERHEATER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_010",
+      "name": "DIAPHRAGM PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 3,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_011",
+      "name": "DOSING PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 12,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_012",
+      "name": "DOUBLE GATE VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 6,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_013",
+      "name": "DOUBLE PIPE HEAT EXCHANGER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 20,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_014",
+      "name": "EJECTOR",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 8,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_015",
+      "name": "EXPANSION JOINT",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 11,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_016",
+      "name": "FAN BLOWER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 7,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_017",
+      "name": "FILTER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_018",
+      "name": "FILTER · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 30,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_019",
+      "name": "FLANGE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 2,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_020",
+      "name": "FLANGED NOZZLE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 2,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_021",
+      "name": "FLANGED NOZZLE · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 2,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_022",
+      "name": "FLANGED NOZZLE · variant 3",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 1,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_023",
+      "name": "FLANGES",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_024",
+      "name": "FLEXIBLE HOSE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 7,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_025",
+      "name": "FLOW",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 6,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_026",
+      "name": "FLOW INSTRUMENT",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_027",
+      "name": "FLOW INSTRUMENT · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_028",
+      "name": "FLOW INSTRUMENT · variant 3",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 7,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_029",
+      "name": "FLOW INSTRUMENT · variant 4",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 6,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_030",
+      "name": "FLOW INSTRUMENT · variant 5",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 3,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_031",
+      "name": "FLOW NOZZLE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_032",
+      "name": "GATE VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_033",
+      "name": "GEAR PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 21,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_034",
+      "name": "HAND PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_035",
+      "name": "HEAT EXCHANGER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 25,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_036",
+      "name": "HEATER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 15,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_037",
+      "name": "HORIZONTAL CENTRIFUGAL PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 1,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_038",
+      "name": "HOSE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 11,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_039",
+      "name": "HOSE · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_040",
+      "name": "HYDRAULIC TURBINE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_041",
+      "name": "INSTRUMENT",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_042",
+      "name": "LINE ARROW",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 8,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_043",
+      "name": "MOTOR",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_044",
+      "name": "MOTOR · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 2,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_045",
+      "name": "NEEDLE VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 14,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_046",
+      "name": "NOZZLE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 1,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_047",
+      "name": "ORIFICE UNION",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_048",
+      "name": "PLUG VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_049",
+      "name": "PRESSURE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_050",
+      "name": "PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 35,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_051",
+      "name": "RECIPROCATING COMPRESSOR",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 6,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_052",
+      "name": "RECIPROCATING COMPRESSOR DOUBLE STAGE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 14,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_053",
+      "name": "RECIPROCATING PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 3,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_054",
+      "name": "RELIEF",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 6,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_055",
+      "name": "RELIEF VALVE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 14,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_056",
+      "name": "RELIEF VALVE · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_057",
+      "name": "RELIEF VALVE · variant 3",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 11,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_058",
+      "name": "ROTARY PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 3,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_059",
+      "name": "SCREW COMPRESSOR",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 14,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_060",
+      "name": "SCREW PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 7,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_061",
+      "name": "SILENCER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_062",
+      "name": "SPRAY DESUPERHEATER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 14,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_063",
+      "name": "STATIC MIXER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 17,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_064",
+      "name": "STEAM TURBINE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_065",
+      "name": "STRAINER",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_066",
+      "name": "STRAINER · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_067",
+      "name": "SUMP PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 11,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_068",
+      "name": "SWITCH",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_069",
+      "name": "TANK",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 6,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_070",
+      "name": "TANK · variant 2",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 16,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_071",
+      "name": "TEE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 14,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_072",
+      "name": "TURBINE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 10,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_073",
+      "name": "VACUUM PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 15,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_074",
+      "name": "VENT",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 5,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_075",
+      "name": "VENTURI TUBE",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_076",
+      "name": "VERTICAL CENTRIFUGAL PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 4,
+      "hasVectorGeometry": true
+    },
+    {
+      "id": "SYM_077",
+      "name": "VERTICAL PUMP",
+      "category": "symbol",
+      "discipline": "P&ID",
+      "status": "needs-review",
+      "sourceLabel": "Uploaded legend drawing",
+      "entityCount": 7,
+      "hasVectorGeometry": true
+    }
+  ],
+  "sanitized": true,
+  "textEntitiesRemoved": true,
+  "sourceLayerNamesRemoved": true
+}

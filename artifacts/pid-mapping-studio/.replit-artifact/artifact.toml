@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "P&ID Mapping Studio"
+description = "A device-local PFD and P&ID workspace with saved source PDFs, original page previews, editable engineering records, CSV reports and backups, plus a separate authenticated company-library admin area. Native DWG conversion requires a future Windows AutoCAD connection."
+version = "1.0.0"
+id = "artifacts/pid-mapping-studio"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19084
+
+[services.development]
+run = "pnpm --filter @workspace/pid-mapping-studio run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pid-mapping-studio", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/pid-mapping-studio/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19084"
+BASE_PATH = "/"

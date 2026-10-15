@@ -442,12 +442,16 @@ h1 { font: 700 clamp(23px, 2.4vw, 31px)/1.15 var(--app-font-display); letter-spa
 .local-library-staging-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: #475f57; font-size: 10px; }
 .local-library-staging-title span { color: #8b8170; font-size: 9px; }
 .local-library-source-row { display: grid; grid-template-columns: minmax(100px, 1fr) 72px minmax(230px, 1.4fr); align-items: center; gap: 9px; min-height: 39px; border-top: 1px solid #edf0ea; }
+.local-library-source-name { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 5px 0; }
 .local-library-source-id { overflow: hidden; color: #405a52; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.local-library-review-filename { max-width: 100%; color: #687a71; font-size: 11px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
 .local-library-row-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 5px; min-width: 0; }
 .local-library-source-row select,.local-library-row-controls input { width: 100%; min-width: 0; min-height: 29px; padding: 4px 7px; border: 1px solid #d9dfd7; border-radius: 3px; color: #455e56; background: #fcfcf9; font-size: 9px; }
 .local-library-row-controls input { grid-column: 1 / -1; }
 .local-library-save { display: inline-flex; gap: 7px; align-items: center; margin-top: 10px; }
 .local-library-save:disabled { opacity: .65; cursor: wait; }
+.local-library-review-link { width: 100%; justify-content: flex-start; gap: 9px; min-height: 42px; margin: 10px 0; padding: 0 12px; }
+.local-library-review-link span { margin-left: auto; padding: 3px 8px; border-radius: 999px; color: #fff; background: #123e61; font: 700 11px var(--app-font-mono); }
 .local-library-save-row { display: inline-flex; align-items: center; gap: 4px; min-height: 29px; padding: 3px 7px; font-size: 9px; }
 .local-library-saved-list { margin-top: 10px; border-top: 1px solid #e1e5df; color: #536a61; font-size: 10px; }
 .local-library-saved-list summary { padding: 9px 2px 4px; cursor: pointer; font-weight: 600; }

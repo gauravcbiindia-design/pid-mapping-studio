@@ -21,6 +21,7 @@ import {
 import {
   approveCadReviewCandidate, createCadStandardsLibrarySeed, dismissCadReviewCandidate,
   loadCadStandardsLibrary, saveCadStandardsLibrary, saveProjectCadDefault, setCompanyCadDefault,
+  updateReviewedCadLibraryItem,
 } from '@/lib/cad-standards';
 import type {
   DrawingMapping, EngineeringRecord, EntityKind, MappedEntity, ReviewStatus,
@@ -480,7 +481,7 @@ function ReviewWorkspace() {
   );
 }
 
-function CadStandardsLibraryRoute() {
+function CadStandardsLibraryRoute({ backHref }: { backHref: string }) {
   const [initial] = useState(() => {
     try {
       return { library: loadCadStandardsLibrary(), canSave: true, error: '' };
@@ -497,20 +498,33 @@ function CadStandardsLibraryRoute() {
   const [canSave, setCanSave] = useState(initial.canSave);
   const [storageNotice, setStorageNotice] = useState(initial.error);
 
-  const commit = (mutate: (current: CadStandardsLibrary) => CadStandardsLibrary) => {
+  const commit = (mutate: (current: CadStandardsLibrary) => CadStandardsLibrary): boolean => {
     if (!canSave) {
       setStorageNotice('The local library could not be read safely. Its saved contents were left unchanged.');
-      return;
+      return false;
+    }
+    let next: CadStandardsLibrary;
+    try {
+      next = mutate(libraryRef.current);
+    } catch (error) {
+      // Validation failures should explain the rejected action, not lock every
+      // review control as if the browser's storage had become unavailable.
+      setStorageNotice(error instanceof Error ? error.message : 'The standards change could not be applied.');
+      return false;
     }
     try {
-      const next = mutate(libraryRef.current);
       saveCadStandardsLibrary(next);
       libraryRef.current = next;
       setLibrary(next);
       setStorageNotice('');
+      return true;
     } catch (error) {
-      setCanSave(false);
-      setStorageNotice(error instanceof Error ? error.message : 'The standards change could not be saved locally.');
+      const message = error instanceof Error ? error.message : 'The standards change could not be saved locally.';
+      if (message.startsWith('This browser could not save the CAD standards locally.')) {
+        setCanSave(false);
+      }
+      setStorageNotice(message);
+      return false;
     }
   };
 
@@ -518,6 +532,8 @@ function CadStandardsLibraryRoute() {
     commit((current) => approveCadReviewCandidate(current, candidateId, 'company', additionalFields));
   const approveProject = (candidateId: string, additionalFields?: { label: string; value: string }[]) =>
     commit((current) => approveCadReviewCandidate(current, candidateId, 'project', additionalFields));
+  const updateReviewedItem = (itemId: string, additionalFields: { label: string; value: string }[]) =>
+    commit((current) => updateReviewedCadLibraryItem(current, itemId, additionalFields));
   const dismiss = (candidateId: string) =>
     commit((current) => dismissCadReviewCandidate(current, candidateId));
   const setCompanyDefault = (purpose: CadPurpose, size: CadSheetSize) =>
@@ -532,8 +548,11 @@ function CadStandardsLibraryRoute() {
     <StandardsLibraryPage
       library={library}
       reviewCandidates={library.reviewCandidates}
+      reviewOnly
+      backHref={backHref}
       onApproveCompany={approveCompany}
       onApproveProject={approveProject}
+      onUpdateReviewedItem={updateReviewedItem}
       onDismiss={dismiss}
       onSetCompanyDefault={setCompanyDefault}
       onSetProjectDefault={setProjectDefault}
@@ -863,6 +882,45 @@ function AuthPages({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   );
 }
 
+function SecureCadStandardsLibraryRoute({ backHref }: { backHref: string }) {
+  const [access, setAccess] = useState<'checking' | 'allowed' | 'denied'>('checking');
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/admin/session', { credentials: 'include' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Admin access could not be verified.');
+        return response.json() as Promise<{ memberships?: Array<{ role?: string }> }>;
+      })
+      .then((session) => {
+        if (!active) return;
+        setAccess(session.memberships?.some((membership) =>
+          membership.role === 'owner' || membership.role === 'admin',
+        ) ? 'allowed' : 'denied');
+      })
+      .catch(() => {
+        if (active) setAccess('denied');
+      });
+    return () => { active = false; };
+  }, []);
+
+  if (access === 'checking') {
+    return <div className="grid min-h-screen place-items-center bg-slate-950 text-sm text-slate-200">Checking Legends Library access…</div>;
+  }
+  if (access === 'denied') {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-slate-100">
+        <section className="max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-6 text-center">
+          <h1 className="text-xl font-semibold">Legends Library review is restricted</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-300">An owner or admin membership is required to review extracted CAD standards.</p>
+          <Link className="mt-5 inline-flex rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100" href={backHref}>Back to workspace</Link>
+        </section>
+      </main>
+    );
+  }
+  return <CadStandardsLibraryRoute backHref={backHref} />;
+}
+
 function HomePage() {
   const { isSignedIn } = useAuth();
   return (
@@ -895,6 +953,11 @@ function HomePage() {
 function AppMainRoutes() {
   const [location] = useLocation();
   const { isLoaded, isSignedIn } = useAuth();
+  if (location === '/standards-review/pfd' || location === '/standards-review/pid') {
+    if (!isLoaded) return <div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Loading secure workspace…</div>;
+    if (!isSignedIn) return <Redirect to="/sign-in" />;
+    return <SecureCadStandardsLibraryRoute backHref={location.endsWith('/pfd') ? '/workspace/pfd' : '/workspace/pid'} />;
+  }
   if (location === '/admin/library') {
     if (!isLoaded) return <div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Loading secure workspace…</div>;
     if (!isSignedIn) return <Redirect to="/sign-in" />;
@@ -942,6 +1005,12 @@ function SingleComputerRoutes() {
   }
   if (location === '/workspace/pid/engineering-data') {
     return <EngineeringDataManager discipline="pid" />;
+  }
+  if (location === '/standards-review/pfd') {
+    return <CadStandardsLibraryRoute backHref="/workspace/pfd" />;
+  }
+  if (location === '/standards-review/pid') {
+    return <CadStandardsLibraryRoute backHref="/workspace/pid" />;
   }
   return <WorkspaceNotFound />;
 }

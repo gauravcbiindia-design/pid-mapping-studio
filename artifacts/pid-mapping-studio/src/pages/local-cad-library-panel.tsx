@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { unzipSync } from 'fflate';
 import {
-  AlertTriangle, Archive, Check, Database, Download, FileCode2, FileText,
+  AlertTriangle, Archive, Check, ClipboardCheck, Database, Download, FileCode2, FileText,
   HardDrive, Loader2, Save, Upload,
 } from 'lucide-react';
+import { Link } from 'wouter';
 import {
   loadCadStandardsLibrary,
   saveCadStandardsLibrary,
@@ -24,7 +25,9 @@ import type {
   NewLocalCadSource,
 } from '@/lib/local-cad-sources';
 
-type StagedDrawing = NewLocalCadSource;
+type StagedDrawing = NewLocalCadSource & {
+  reviewFilename: string;
+};
 
 type StagedPdf = {
   id: string;
@@ -56,6 +59,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function archiveBasename(entryPath: string): string {
+  const basename = entryPath.replace(/\\/g, '/').split('/').pop() ?? '';
+  const readableName = basename
+    .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '')
+    .trim()
+    .slice(0, 180);
+  return readableName || 'Unnamed DWG';
+}
+
 export default function LocalCadLibraryPanel({
   onAddPdfs,
   discipline,
@@ -73,6 +85,13 @@ export default function LocalCadLibraryPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [storageError, setStorageError] = useState('');
   const [pdfsAdded, setPdfsAdded] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState(() => {
+    try {
+      return loadCadStandardsLibrary().reviewCandidates.filter((candidate) => candidate.status === 'needs-review').length;
+    } catch {
+      return 0;
+    }
+  });
   const [isPreparingExtractor, setIsPreparingExtractor] = useState(false);
   const [extractionSourceId, setExtractionSourceId] = useState('');
   const [isImportingExtraction, setIsImportingExtraction] = useState(false);
@@ -135,9 +154,10 @@ export default function LocalCadLibraryPanel({
         throw new Error('No PDF or DWG files were found in this ZIP. Other file types were left untouched.');
       }
 
-      const nextDrawings = drawingEntries.map(([, bytes], index) => ({
+      const nextDrawings = drawingEntries.map(([path, bytes], index) => ({
         id: makeId(),
         label: `Source DWG ${String(sources.length + index + 1).padStart(3, '0')}`,
+        reviewFilename: archiveBasename(path),
         category: 'needs-review' as const,
         discipline,
         projectLabel: '',
@@ -156,7 +176,7 @@ export default function LocalCadLibraryPanel({
         `Found ${drawingEntries.length} DWG file(s) and ${pdfEntries.length} PDF file(s). ${backupCount} backup file(s) ignored.`,
       );
       if (drawingEntries.length) {
-        setArchiveMessage('Assign a use to each DWG before saving it in the local library. Source filenames are not shown or stored.');
+        setArchiveMessage('Assign a use to each DWG before saving it. ZIP filenames are shown only during review; the saved library keeps generic source IDs.');
       } else {
         setArchiveMessage('No DWG files to add. You can add the extracted PDF to the conversion queue.');
       }
@@ -181,7 +201,17 @@ export default function LocalCadLibraryPanel({
     setIsSaving(true);
     setStorageError('');
     try {
-      const toSave = stagedDrawings.filter((drawing) => drawing.category !== 'ignore');
+      const toSave = stagedDrawings
+        .filter((drawing) => drawing.category !== 'ignore')
+        .map((drawing) => ({
+          id: drawing.id,
+          label: drawing.label,
+          category: drawing.category,
+          discipline: drawing.discipline,
+          projectLabel: drawing.projectLabel,
+          bytes: drawing.bytes,
+          content: drawing.content,
+        }));
       await saveLocalCadSources(toSave);
       const updated = await listLocalCadSources();
       setSources(updated);
@@ -359,6 +389,7 @@ export default function LocalCadLibraryPanel({
       };
       await saveLocalCadBlockAssets(extractedAssets);
       saveCadStandardsLibrary(updated);
+      setPendingReviewCount(updated.reviewCandidates.filter((candidate) => candidate.status === 'needs-review').length);
       setArchiveMessage(
         nextCandidates.length
           ? `${nextCandidates.length} extracted record(s) added to Drafting standards for review. Nothing was approved automatically.`
@@ -450,6 +481,18 @@ export default function LocalCadLibraryPanel({
         {categoryCounts['needs-review'] > 0 && <span className="local-library-review-count"><strong>{categoryCounts['needs-review']}</strong> need review</span>}
       </div>
 
+      {pendingReviewCount > 0 && (
+        <Link
+          href={discipline === 'PFD' ? '/standards-review/pfd' : '/standards-review/pid'}
+          className="btn primary local-library-review-link"
+          data-testid="link-review-extracted-standards"
+        >
+          <ClipboardCheck size={15} />
+          Review extracted standards
+          <span>{pendingReviewCount}</span>
+        </Link>
+      )}
+
       {storageError && (
         <div className="pdf-validation" role="alert" data-testid="status-cad-library-error">
           <AlertTriangle size={15} /><span>{storageError}</span>
@@ -487,7 +530,12 @@ export default function LocalCadLibraryPanel({
           </div>
           {stagedDrawings.map((drawing) => (
             <label className="local-library-source-row" key={drawing.id}>
-              <span className="local-library-source-id">{drawing.label}</span>
+              <span className="local-library-source-name">
+                <span className="local-library-source-id">{drawing.label}</span>
+                <span className="local-library-review-filename" title={drawing.reviewFilename}>
+                  ZIP filename: {drawing.reviewFilename}
+                </span>
+              </span>
               <span className="pdf-file-meta">{formatBytes(drawing.bytes)}</span>
               <div className="local-library-row-controls">
                 <select

@@ -4,6 +4,7 @@ import {
   AlertTriangle, Download, FilePlus2, FileText, HardDrive, Loader2, Trash2, X, Eye, Monitor, RefreshCw, Wrench,
 } from 'lucide-react';
 import PdfPagePreview from '@/components/pdf-page-preview';
+import LocalCadLibraryPanel from '@/pages/local-cad-library-panel';
 import {
   MAX_FILE_BYTES, MAX_TOTAL_BYTES, StoreError, clearDiscipline, deletePdfs, getPdfBytes,
   listPdfs, savePdf, savePdfExtractedText, sha256Hex, totalStoredBytes, updatePdfMeta, type PdfMeta,
@@ -16,6 +17,7 @@ import type { ApprovedRunnerStandard, ApprovedRunnerSymbol, RunnerBlockAsset } f
 import { getLocalCadBlockAsset } from '@/lib/local-cad-sources';
 import { loadCadStandardsLibrary } from '@/lib/cad-standards';
 import type { CadLibraryItem } from '@/lib/cad-standards';
+import { parseValveMaskBoundary, type ValveMaskPoint } from '@/lib/valve-mask';
 import './pdf-input-panel.css';
 
 type Discipline = 'PFD' | 'P&ID';
@@ -385,21 +387,40 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         const blockAssetId = fieldValue('Block asset ID');
         const blockName = fieldValue('Block name');
         const fallbackCategory = fieldValue('Fallback category');
+        const targetLayer = fieldValue('Target CAD layer');
         const sourceDiscipline = fieldValue('Source discipline');
         if (!sourceId || !blockAssetId || !blockName || !fallbackCategory ||
           (sourceDiscipline !== 'PFD' && sourceDiscipline !== 'P&ID' && sourceDiscipline !== 'Shared')) return [];
+        if (!targetLayer || targetLayer.toUpperCase() === '0') {
+          throw new Error(`Approved block "${blockName}" has no valid target CAD layer. Re-review it and select an approved non-zero layer.`);
+        }
+        let wipeoutBoundary: ValveMaskPoint[] | undefined;
+        if (fallbackCategory.toLowerCase() === 'valve') {
+          const savedBoundary = fieldValue('Wipeout mask boundary');
+          try {
+            wipeoutBoundary = parseValveMaskBoundary(savedBoundary);
+          } catch (error) {
+            throw new Error(
+              `Approved valve "${blockName}" has no valid reviewed body mask. Re-review the valve outline before preparing the AutoCAD runner. ${
+                error instanceof Error ? error.message : ''
+              }`,
+            );
+          }
+        }
         return [{
           sourceId,
           blockAssetId,
           blockName,
           fallbackCategory,
+          targetLayer,
           discipline: sourceDiscipline,
+          ...(wipeoutBoundary ? { wipeoutBoundary } : {}),
           ...(item.scope === 'project' && item.projectId ? { projectId: item.projectId } : {}),
         }];
       });
       const approvedStandards: ApprovedRunnerStandard[] = candidateItems.flatMap((item) => {
         if (item.sourceKind !== 'extracted-dwg' || item.reviewStatus !== 'reviewed' ||
-          (item.category !== 'layer' && item.category !== 'textStyle')) return [];
+          (item.category !== 'layer' && item.category !== 'textStyle' && item.category !== 'linetype')) return [];
         const fieldValue = (label: string) => item.fields.find((field) => field.label === label)?.value?.trim() ?? '';
         const sourceDiscipline = fieldValue('Source discipline');
         const name = fieldValue('CAD name');
@@ -440,7 +461,7 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
       setRunnerMessage(
         `Runner and ${saved.length} source PDF(s) downloaded. It can create ${runnerPageTotal} separate DWG file(s). ` +
         `${approvedSymbols.filter((symbol) => (symbol.discipline === discipline || symbol.discipline === 'Shared') && (!symbol.projectId || symbol.projectId === projectId)).length} reviewed symbol mapping(s) and ` +
-        `${approvedStandards.filter((standard) => (standard.discipline === discipline || standard.discipline === 'Shared') && (!standard.projectId || standard.projectId === projectId)).length} reviewed layer/text-style mapping(s) are available to this ${discipline} run.`
+        `${approvedStandards.filter((standard) => (standard.discipline === discipline || standard.discipline === 'Shared') && (!standard.projectId || standard.projectId === projectId)).length} reviewed layer/text-style/linetype mapping(s) are available to this ${discipline} run.`
       );
     } catch (error) {
       setRunnerMessage(error instanceof Error ? error.message : 'The AutoCAD runner could not be prepared. Try a smaller PDF batch.');
@@ -723,6 +744,11 @@ export default function PdfInputPanel({ discipline }: { discipline: Discipline }
         <strong><Monitor size={13} style={{ verticalAlign: '-2px' }} /> AutoCAD 2020 is not connected to this browser.</strong>{' '}
         DXF vector export runs directly in this browser. Native DWG still requires the downloaded helper to run in Windows AutoCAD; the browser does not connect to AutoCAD.
       </div>
+
+      <LocalCadLibraryPanel
+        discipline={discipline}
+        onAddPdfs={addFiles}
+      />
     </section>
   );
 }
