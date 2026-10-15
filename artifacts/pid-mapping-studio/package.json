@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
-    "build:pages": "vite build --config vite.config.pages.ts && node scripts/verify-pages-build.mjs --check",
+    "build:pages": "vite build --config vite.config.pages.ts --mode pages && node scripts/verify-pages-build.mjs --check",
     "verify:pages": "node scripts/verify-pages-build.mjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"

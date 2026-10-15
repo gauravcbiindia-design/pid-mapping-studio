@@ -791,7 +791,9 @@ function MappedGraphic({
 }
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const singleComputerMode = import.meta.env.VITE_SINGLE_COMPUTER_MODE === 'true';
+const singleComputerMode =
+  import.meta.env.MODE === 'pages' ||
+  import.meta.env.VITE_SINGLE_COMPUTER_MODE === 'true';
 const clerkPubKey = singleComputerMode
   ? undefined
   : publishableKeyFromHost(
